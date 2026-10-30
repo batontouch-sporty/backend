@@ -90,7 +90,13 @@ jobs:
           docker exec "$mariadb_id" mkdir -p /init
           docker cp docker/mariadb/init.sql "$mariadb_id":/init/init.sql
           docker cp docker/mariadb/init.sh "$mariadb_id":/init/init.sh
-          docker exec             -e MARIADB_ROOT_PASSWORD=ci-root             -e USER_APP_PASSWORD=ci-only             -e MATCH_APP_PASSWORD=ci-only             -e FACILITY_APP_PASSWORD=ci-only             -e NOTIFICATION_APP_PASSWORD=ci-only             "$mariadb_id" sh /init/init.sh
+          docker exec \
+            -e MARIADB_ROOT_PASSWORD=ci-root \
+            -e USER_APP_PASSWORD=ci-only \
+            -e MATCH_APP_PASSWORD=ci-only \
+            -e FACILITY_APP_PASSWORD=ci-only \
+            -e NOTIFICATION_APP_PASSWORD=ci-only \
+            "$mariadb_id" sh /init/init.sh
 
       - name: 빌드 · 테스트
         run: |

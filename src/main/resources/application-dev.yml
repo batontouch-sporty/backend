@@ -1,0 +1,73 @@
+server:
+    port: 8000
+
+spring:
+
+    application:
+        name: sporty
+    config:
+        activate:
+            on-profile: dev
+        import:
+        - "optional:file:./.env[.properties]"
+        - "optional:file:../.env[.properties]"
+
+    datasource:
+        driver-class-name: ${DB_DRIVER}   
+        url: ${DB_URL}
+        username: ${DB_USERNAME}
+        password: ${DB_PASSWORD}
+
+    jpa:
+        defer-datasource-initialization: true
+        hibernate:
+            ddl-auto: create-drop
+
+        show-sql: true
+
+        properties:
+            hibernate:
+                "[format_sql]": true
+                naming:
+                physical-strategy: # conversion between camelcase and snake case
+                    org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
+
+                dialect: org.hibernate.dialect.MariaDBDialect
+
+    sql:
+        init:
+            mode: always
+            data-locations: classpath:data.sql
+            encoding: UTF-8
+
+    data:
+        redis:
+            host: localhost
+            port: 6379
+            password:
+            timeout: 6000ms
+
+    ai:
+        openai:
+            api-key: ${OPEN_AI_KEY}
+        chat:
+            options:
+                model: ${OPEN_AI_MODEL}
+
+jwt:
+    secret: ${JWT_SECRET_KEY}
+
+openapi:
+    serviceKey: ${OPENAPI_SERVICE_KEY}
+    callBackUrl: ${OPENAPI_CALLBACKURL}
+    dataType: ${OPENAPI_TYPE}
+
+facility:
+    openapi:
+        service-key: ${PUBLIC_DATA_API_KEY}
+        base-url: ${PUBLIC_DATA_API_URL}
+        service-name: ListPublicReservationSport
+        data-type: json
+    sync:
+        cron: "0 0 3 * * *"
+        zone: "Asia/Seoul"

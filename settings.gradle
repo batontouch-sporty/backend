@@ -2,3 +2,4 @@ rootProject.name = 'sporty'
 
 include 'legacy-sporty'
 include 'discovery-service'
+include 'config-service'

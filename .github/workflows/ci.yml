@@ -1,0 +1,116 @@
+name: CI
+
+# PR마다 백엔드를 빌드하고 테스트한다. 통합 테스트가 MariaDB·Redis를 쓰므로 둘을 서비스 컨테이너로 띄운다.
+# 서비스가 여러 폴더로 나뉘어도 루트 gradlew 하나로 전부 돈다(루트 settings.gradle에 모듈을 등록한다).
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: Gradle 빌드 · 테스트
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: ci-root
+          MARIADB_DATABASE: sporty
+          MARIADB_USER: sporty
+          MARIADB_PASSWORD: ci-only
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    # CI 전용 값이다. 실제 키·비밀번호는 넣지 않는다(외부 API는 테스트에서 호출하지 않는다).
+    # OPEN_AI_KEY는 비워 둔다. 값이 있으면 OpenAI를 실제로 부르는 테스트가 켜진다.
+    # 대신 Spring 설정에는 SPRING_AI_OPENAI_API_KEY로 가짜 값을 넣어 컨텍스트가 뜨게 한다.
+    env:
+      SPRING_PROFILES_ACTIVE: dev
+      DB_DRIVER: org.mariadb.jdbc.Driver
+      DB_URL: jdbc:mariadb://127.0.0.1:3306/sporty
+      DB_USERNAME: sporty
+      DB_PASSWORD: ci-only
+      JWT_SECRET_KEY: ci-only-jwt-secret-key-at-least-32-bytes-long
+      OPEN_AI_KEY: ''
+      SPRING_AI_OPENAI_API_KEY: ci-dummy
+      OPEN_AI_MODEL: gpt-4o-mini
+      PUBLIC_DATA_API_URL: http://localhost:9/ci-dummy
+      PUBLIC_DATA_API_KEY: ci-dummy
+      OPENAPI_TYPE: json
+      OPENAPI_SERVICE_KEY: ci-dummy
+      OPENAPI_CALLBACKURL: http://localhost:9/ci-dummy
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Gradle wrapper 검증
+        uses: gradle/actions/wrapper-validation@v4
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Gradle 캐시
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: 서비스별 스키마 생성
+        # 서비스별 DB 분리 규칙: <도메인>_db. 스키마 초기화 스크립트가 생기면 이 단계를 그 스크립트 실행으로 바꾼다.
+        run: |
+          for db in user_db match_db facility_db notification_db; do
+            docker exec ${{ job.services.mariadb.id }} mariadb -u root -pci-root -e "CREATE DATABASE IF NOT EXISTS \`$db\`; GRANT ALL ON \`$db\`.* TO 'sporty'@'%';"
+          done
+
+      - name: 빌드 · 테스트
+        run: |
+          chmod +x gradlew
+          ./gradlew build --no-daemon --console=plain
+
+      - name: 테스트 결과 요약
+        if: ${{ !cancelled() }}
+        uses: mikepenz/action-junit-report@v5
+        with:
+          report_paths: '**/build/test-results/test/*.xml'
+          check_name: 테스트 결과
+          detailed_summary: true
+          include_passed: false
+
+      - name: 테스트 리포트 보관
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            **/build/reports/tests/test/
+            **/build/test-results/test/
+          if-no-files-found: ignore
+          retention-days: 7

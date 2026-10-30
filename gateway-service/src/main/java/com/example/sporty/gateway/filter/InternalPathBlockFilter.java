@@ -39,8 +39,23 @@ public class InternalPathBlockFilter implements WebFilter, Ordered {
     }
 
     static boolean isInternal(String rawPath) {
-        String decoded = UriUtils.decode(rawPath, StandardCharsets.UTF_8);
-        return SEPARATOR.splitAsStream(decoded)
+        String path = rawPath;
+        // %2569처럼 여러 번 인코딩한 경로도 잡는다. 3번을 넘는 인코딩은 뒤 서비스도 풀지 않는다.
+        for (int i = 0; i < 3; i++) {
+            try {
+                path = UriUtils.decode(path, StandardCharsets.UTF_8);
+            } catch (IllegalArgumentException e) {
+                return false;
+            }
+            if (hasInternalSegment(path)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean hasInternalSegment(String path) {
+        return SEPARATOR.splitAsStream(path)
                 .map(segment -> segment.split(";", 2)[0])
                 .anyMatch("internal"::equalsIgnoreCase);
     }

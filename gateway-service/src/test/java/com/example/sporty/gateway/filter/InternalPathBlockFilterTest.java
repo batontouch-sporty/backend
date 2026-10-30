@@ -14,6 +14,7 @@ class InternalPathBlockFilterTest {
             "/user-service//internal/users",
             "/user-service/health-check/../internal/users",
             "/user-service/%69nternal/users",
+            "/user-service/%2569nternal/users",
             "/user-service/internal;v=1/users",
             "/user-service/x%2Finternal/users",
             "/user-service/INTERNAL/users"
@@ -26,6 +27,7 @@ class InternalPathBlockFilterTest {
     @ValueSource(strings = {
             "/user-service/health-check",
             "/user-service/api/internal-notes",
+            "/user-service/api/search/100%25off",
             "/actuator/health"
     })
     void allowsOtherPaths(String path) {

@@ -19,7 +19,7 @@ reviews:
     - "!**/gradle/wrapper/**"
     - "!**/*.lock"
   path_instructions:
-    - path: "**/*-service/**"
+    - path: "{**/*-service/**,src/main/java/**}"
       instructions: >-
         MSA 규칙을 확인한다. 다른 서비스의 DB·테이블·엔티티를 직접 접근하지 않는지,
         서비스 간 호출은 OpenFeign(동기) 또는 Kafka 이벤트(비동기)만 쓰는지,

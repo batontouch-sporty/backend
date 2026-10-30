@@ -42,7 +42,10 @@ public class UserService {
             throw new DuplicateEmailException();
         }
 
-        if (profileRepository.existsByNickname(request.getNickname())) {
+        // 프로필 수정과 같이 앞뒤 공백을 지운 닉네임으로 검사·저장한다.
+        String nickname = request.getNickname().trim();
+
+        if (profileRepository.existsByNickname(nickname)) {
             throw new DuplicateNicknameException();
         }
 
@@ -56,7 +59,7 @@ public class UserService {
 
         // 3. 프로필 생성
         ProfileEntity profileEntity = ProfileEntity.builder()
-                .nickname(request.getNickname())
+                .nickname(nickname)
                 .district(request.getDistrict())
                 .user(savedUser)
                 .build();

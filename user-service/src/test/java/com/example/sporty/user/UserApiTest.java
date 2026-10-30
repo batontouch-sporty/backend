@@ -103,6 +103,18 @@ class UserApiTest {
     }
 
     @Test
+    void signupTrimsNicknameAndTreatsPaddedDuplicateAsTaken() throws Exception {
+        String nickname = nickname();
+        String email = email();
+        signup(email, "  " + nickname + "  ").andExpect(status().isCreated());
+        reload();
+        long userId = users.findByEmail(email).orElseThrow().getId();
+        assertThat(profiles.findByUserId(userId).orElseThrow().getNickname()).isEqualTo(nickname);
+        signup(email(), " " + nickname).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("DUPLICATE_NICKNAME"));
+    }
+
+    @Test
     void malformedSignupAndLoginReturnInvalidInput() throws Exception {
         postJson("/api/users", Map.of("email", "invalid", "password", "short"))
                 .andExpect(status().isBadRequest())

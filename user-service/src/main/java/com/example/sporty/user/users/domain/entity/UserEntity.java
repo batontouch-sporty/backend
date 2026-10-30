@@ -73,7 +73,11 @@ public class UserEntity {
 
 
     // [USR-04] 회원탈퇴
+    // 이미 탈퇴한 회원이 남은 Access Token으로 다시 요청해도 처음 탈퇴 시각을 유지한다.
     public void withdraw() {
+        if (this.status == UserStatus.WITHDRAWN) {
+            return;
+        }
         this.status = UserStatus.WITHDRAWN;
         this.withdrawnAt = new Date();
     }

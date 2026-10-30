@@ -43,6 +43,15 @@ class UserWithdrawalTest {
         verify(tokens).delete(userId);
     }
 
+    @Test void withdrawingTwiceKeepsFirstWithdrawnAt() {
+        service.withdrawal(userId, "correct");
+        var first = users.findById(userId).orElseThrow().getWithdrawnAt();
+        service.withdrawal(userId, "correct");
+        UserEntity user = users.findById(userId).orElseThrow();
+        assertThat(user.getStatus()).isEqualTo(UserStatus.WITHDRAWN);
+        assertThat(user.getWithdrawnAt()).isEqualTo(first);
+    }
+
     @Test void wrongOrMissingPasswordChangesNothing() {
         for (String password : new String[]{null, "", " ", "wrong"})
             assertThatThrownBy(() -> service.withdrawal(userId, password)).isInstanceOf(PasswordMismatchException.class);

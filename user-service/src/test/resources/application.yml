@@ -1,0 +1,31 @@
+# 테스트 전용. main의 application.yml 대신 이 파일을 읽는다.
+# DB는 H2 메모리(MariaDB 모드), Redis는 각 테스트에서 RefreshTokenService를 목으로 바꿔 외부 컨테이너 없이 돈다.
+spring:
+  application:
+    name: user-service
+  cloud:
+    config:
+      enabled: false
+    discovery:
+      enabled: false
+  datasource:
+    url: jdbc:h2:mem:user_db;MODE=MariaDB;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    open-in-view: false
+    properties:
+      hibernate:
+        # user는 H2 예약어라 따옴표로 감싼다.
+        auto_quote_keyword: true
+
+eureka:
+  client:
+    enabled: false
+
+# 테스트 서명용 값. 실제 키가 아니다.
+jwt:
+  secret: test-only-signing-secret-with-at-least-32-bytes

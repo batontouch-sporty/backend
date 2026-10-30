@@ -99,13 +99,26 @@ class TokenRefreshTest {
     }
 
     @Test
-    void doesNotConvertRedisOutageToInvalidToken() {
+    // Redis 장애를 401(RT 무효)로 바꾸지 않는다. 프론트가 세션을 지우지 않도록 500 + {code,message}로 답한다.
+    void doesNotConvertRedisOutageToInvalidToken() throws Exception {
         String rt = tokens.createRefreshToken(1L);
         when(refreshTokens.findByUserId(1L)).thenThrow(new org.springframework.data.redis.RedisConnectionFailureException("test outage"));
-        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
-                mvc.perform(post("/api/auth/refresh").contentType("application/json")
-                        .content("{\"refreshToken\":\"" + rt + "\"}")))
-                .hasRootCauseInstanceOf(org.springframework.data.redis.RedisConnectionFailureException.class);
+        mvc.perform(post("/api/auth/refresh").contentType("application/json")
+                        .content("{\"refreshToken\":\"" + rt + "\"}"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value("INTERNAL_SERVER_ERROR"))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("test outage"))));
+    }
+
+    @Test
+    void standardMvcErrorsKeepTheirStatus() throws Exception {
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/auth/refresh"))
+                .andExpect(status().isMethodNotAllowed())
+                .andExpect(jsonPath("$.code").value("METHOD_NOT_ALLOWED"));
+        mvc.perform(post("/api/auth/no-such-path"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("NOT_FOUND"));
     }
 
     private UserEntity user(UserStatus status, Role role) {

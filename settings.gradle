@@ -1,1 +1,3 @@
 rootProject.name = 'sporty'
+
+include 'legacy-sporty'

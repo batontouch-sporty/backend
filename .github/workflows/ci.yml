@@ -1,7 +1,7 @@
 name: CI
 
 # PR마다 백엔드를 빌드하고 테스트한다. 통합 테스트가 MariaDB·Redis를 쓰므로 둘을 서비스 컨테이너로 띄운다.
-# 서비스가 여러 폴더로 나뉘어도 루트 gradlew 하나로 전부 돈다(루트 settings.gradle에 모듈을 등록한다).
+# 루트 gradlew 하나로 settings.gradle에 등록된 전 모듈을 빌드한다(1차 코드 legacy-sporty 포함).
 
 on:
   pull_request:
@@ -84,11 +84,19 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: 서비스별 스키마 생성
-        # 서비스별 DB 분리 규칙: <도메인>_db. 스키마 초기화 스크립트가 생기면 이 단계를 그 스크립트 실행으로 바꾼다.
+        # Compose와 같은 init.sh·init.sql로 스키마와 서비스 계정을 만든다.
         run: |
-          for db in user_db match_db facility_db notification_db; do
-            docker exec ${{ job.services.mariadb.id }} mariadb -u root -pci-root -e "CREATE DATABASE IF NOT EXISTS \`$db\`; GRANT ALL ON \`$db\`.* TO 'sporty'@'%';"
-          done
+          mariadb_id=${{ job.services.mariadb.id }}
+          docker exec "$mariadb_id" mkdir -p /init
+          docker cp docker/mariadb/init.sql "$mariadb_id":/init/init.sql
+          docker cp docker/mariadb/init.sh "$mariadb_id":/init/init.sh
+          docker exec \
+            -e MARIADB_ROOT_PASSWORD=ci-root \
+            -e USER_APP_PASSWORD=ci-only \
+            -e MATCH_APP_PASSWORD=ci-only \
+            -e FACILITY_APP_PASSWORD=ci-only \
+            -e NOTIFICATION_APP_PASSWORD=ci-only \
+            "$mariadb_id" sh /init/init.sh
 
       - name: 빌드 · 테스트
         run: |

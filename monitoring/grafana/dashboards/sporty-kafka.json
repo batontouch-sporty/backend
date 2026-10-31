@@ -3,20 +3,7 @@
   "kind": "Dashboard",
   "metadata": {
     "name": "sporty-kafka",
-    "namespace": "default",
-    "uid": "ba79b0d6-03d0-479e-80a8-ba4f188423dc",
-    "resourceVersion": "1793436968210993",
-    "generation": 3,
-    "creationTimestamp": "2026-10-31T08:39:10Z",
-    "labels": {
-      "grafana.app/deprecatedInternalID": "4261667829116928"
-    },
-    "annotations": {
-      "grafana.app/createdBy": "user:fg2v7gv8nr6dce",
-      "grafana.app/saved-from-ui": "Grafana v13.3.0 (6f8ce3c693)",
-      "grafana.app/updatedBy": "user:fg2v7gv8nr6dce",
-      "grafana.app/updatedTimestamp": "2026-10-31T08:56:08Z"
-    }
+    "namespace": "default"
   },
   "spec": {
     "annotations": [

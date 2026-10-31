@@ -3,19 +3,7 @@
   "kind": "Dashboard",
   "metadata": {
     "name": "sporty-service-overview",
-    "namespace": "default",
-    "uid": "28495697-6d18-4386-8036-ce7665ec0272",
-    "resourceVersion": "1793435577674983",
-    "generation": 1,
-    "creationTimestamp": "2026-10-31T08:32:57Z",
-    "labels": {
-      "grafana.app/deprecatedInternalID": "4260103043346432"
-    },
-    "annotations": {
-      "grafana.app/createdBy": "user:fg2v7gv8nr6dce",
-      "grafana.app/saved-from-ui": "Grafana v13.3.0 (6f8ce3c693)",
-      "grafana.app/updatedBy": "user:fg2v7gv8nr6dce"
-    }
+    "namespace": "default"
   },
   "spec": {
     "annotations": [

@@ -3,20 +3,7 @@
   "kind": "Dashboard",
   "metadata": {
     "name": "sporty-jvm-resources",
-    "namespace": "default",
-    "uid": "ae945c33-27fd-4502-b5a6-80d87f461ad5",
-    "resourceVersion": "1793436952605003",
-    "generation": 2,
-    "creationTimestamp": "2026-10-31T08:55:35Z",
-    "labels": {
-      "grafana.app/deprecatedInternalID": "4265799881256960"
-    },
-    "annotations": {
-      "grafana.app/createdBy": "user:fg2v7gv8nr6dce",
-      "grafana.app/saved-from-ui": "Grafana v13.3.0 (6f8ce3c693)",
-      "grafana.app/updatedBy": "user:fg2v7gv8nr6dce",
-      "grafana.app/updatedTimestamp": "2026-10-31T08:55:52Z"
-    }
+    "namespace": "default"
   },
   "spec": {
     "annotations": [

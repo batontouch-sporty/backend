@@ -3,20 +3,7 @@
   "kind": "Dashboard",
   "metadata": {
     "name": "sporty-service-communication",
-    "namespace": "default",
-    "uid": "6d787765-90cd-4a65-891c-00ba9b585589",
-    "resourceVersion": "1793437004769998",
-    "generation": 2,
-    "creationTimestamp": "2026-10-31T08:38:49Z",
-    "labels": {
-      "grafana.app/deprecatedInternalID": "4261576980492288"
-    },
-    "annotations": {
-      "grafana.app/createdBy": "user:fg2v7gv8nr6dce",
-      "grafana.app/saved-from-ui": "Grafana v13.3.0 (6f8ce3c693)",
-      "grafana.app/updatedBy": "user:fg2v7gv8nr6dce",
-      "grafana.app/updatedTimestamp": "2026-10-31T08:56:44Z"
-    }
+    "namespace": "default"
   },
   "spec": {
     "annotations": [

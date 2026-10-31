@@ -68,6 +68,19 @@ docker compose -f .\monitoring\compose.yml down
 서비스별 실측 연동, 부하·장애 시연, Slack 알림은 별도 작업입니다.
 지표 이름과 라벨의 가정 및 커스텀 Counter 제안은 `grafana/dashboards/README.md`를 확인합니다.
 
+## 대시보드 형식과 Grafana 버전
+
+- 대시보드 5개는 모두 `dashboard.grafana.app/v2` 리소스 형식입니다.
+- 작성 및 로컬 Import 확인 환경은 **Grafana 13.3.0**입니다. 팀 실행 환경도 이 버전으로 맞추는 것을 기준으로 합니다.
+- 13.3.0 기본 실행 환경에서 별도 기능 토글을 추가하지 않고 사용했습니다.
+  이전 버전에서의 v2 Import 호환성은 검증하지 않았습니다. 이전 버전을 사용해야 한다면
+  해당 버전에서 지원하는 형식으로 다시 내보내고 Import를 검증해야 합니다.
+- `metadata.name`은 대시보드의 고정 식별자로 유지합니다.
+  인스턴스 전용 UUID(`metadata.uid`), 수정 버전, 생성 시각, 내부 숫자 ID 및 작성자 정보는 제거했습니다.
+- 위 UUID를 다른 대시보드의 spec에서 참조하지 않는지 확인했습니다.
+  데이터 소스 UID인 `sporty-prometheus`는 별개이며 유지해야 합니다.
+- 대시보드 스키마 안내: https://grafana.com/docs/grafana/latest/visualizations/dashboards/build-dashboards/view-dashboard-json-model/
+
 ## 루트 Compose 통합 시 연결 조건
 
 Grafana와 Prometheus의 루트 Compose 통합은 인프라 담당과 조율합니다.

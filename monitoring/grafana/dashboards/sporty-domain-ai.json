@@ -3,20 +3,7 @@
   "kind": "Dashboard",
   "metadata": {
     "name": "sporty-domain-ai",
-    "namespace": "default",
-    "uid": "9f88fb97-5db5-436e-b78e-7819278e8949",
-    "resourceVersion": "1793436986943984",
-    "generation": 2,
-    "creationTimestamp": "2026-10-31T08:51:05Z",
-    "labels": {
-      "grafana.app/deprecatedInternalID": "4264667683418112"
-    },
-    "annotations": {
-      "grafana.app/createdBy": "user:fg2v7gv8nr6dce",
-      "grafana.app/saved-from-ui": "Grafana v13.3.0 (6f8ce3c693)",
-      "grafana.app/updatedBy": "user:fg2v7gv8nr6dce",
-      "grafana.app/updatedTimestamp": "2026-10-31T08:56:26Z"
-    }
+    "namespace": "default"
   },
   "spec": {
     "annotations": [

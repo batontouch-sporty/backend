@@ -57,7 +57,46 @@ class MatchEntityStatusTest {
                 .isInstanceOf(IllegalStateException.class);
         assertThatThrownBy(() -> match.reopenRecruitment(LATER))
                 .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> match.changeStatus(MatchStatus.RECRUITING, LATER))
+                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> match.changeStatus(MatchStatus.CLOSED, LATER))
+                .isInstanceOf(IllegalStateException.class);
         assertThat(match.getStatus()).isEqualTo(MatchStatus.IN_PROGRESS);
+        assertThat(match.getStatusChangedAt()).isEqualTo(FIRST);
+    }
+
+    @Test
+    void invalidFacilityDoesNotPartiallyUpdateDetails() {
+        MatchEntity match = newMatch();
+        MatchEntity.Details changed = new MatchEntity.Details("변경된 제목", null,
+                FIRST.plusDays(2), FIRST.plusDays(2).plusHours(2), 5,
+                SkillLevel.BEGINNER, SportType.BASKETBALL, GenderGroup.MIXED);
+
+        assertThatThrownBy(() -> match.update(changed,
+                new MatchEntity.FacilitySnapshot(0, "체육관", "잠실", "SONGPA", true, null)))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(match.getTitle()).isEqualTo("농구");
+        assertThat(match.getStartAt()).isEqualTo(FIRST.plusDays(1));
+        assertThat(match.getMaxParticipant()).isEqualTo(4);
+        assertThat(match.getFacilityId()).isEqualTo(12);
+
+        assertThatThrownBy(() -> match.update(changed, null))
+                .isInstanceOf(NullPointerException.class);
+        assertThat(match.getTitle()).isEqualTo("농구");
+    }
+
+    @Test
+    void invalidDetailsDoNotPartiallyUpdateFacility() {
+        MatchEntity match = newMatch();
+        MatchEntity.Details invalid = new MatchEntity.Details("변경된 제목", null,
+                FIRST.plusDays(2), FIRST.plusDays(2).plusHours(2), 5,
+                SkillLevel.BEGINNER, null, GenderGroup.MIXED);
+
+        assertThatThrownBy(() -> match.update(invalid,
+                new MatchEntity.FacilitySnapshot(99, "새 체육관", "강남", "GANGNAM", true, null)))
+                .isInstanceOf(NullPointerException.class);
+        assertThat(match.getTitle()).isEqualTo("농구");
+        assertThat(match.getFacilityId()).isEqualTo(12);
     }
 
     @Test

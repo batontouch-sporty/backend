@@ -101,11 +101,12 @@ public class MatchEntity {
     protected MatchEntity() {}
 
     public MatchEntity(Details details, FacilitySnapshot facility) {
-        updateDetails(details);
-        copyFacility(facility);
+        update(details, facility);
     }
 
     public void update(Details details, FacilitySnapshot facility) {
+        validateDetails(details);
+        validateFacility(facility);
         updateDetails(details);
         copyFacility(facility);
     }
@@ -128,6 +129,10 @@ public class MatchEntity {
         Objects.requireNonNull(changedAt);
         if (status == MatchStatus.CANCELLED || status == MatchStatus.COMPLETED) {
             throw new IllegalStateException("Cannot change status from " + status);
+        }
+        if (status == MatchStatus.IN_PROGRESS
+                && (next == MatchStatus.RECRUITING || next == MatchStatus.CLOSED)) {
+            throw new IllegalStateException("Cannot reopen recruitment from " + status);
         }
         if (next == MatchStatus.CANCELLED && cancelledAt == null) {
             throw new IllegalStateException("Use cancel() to record cancelledAt");
@@ -154,7 +159,7 @@ public class MatchEntity {
     }
 
     /** Enforce the same title, capacity and time invariants as the match_db DDL. */
-    private void updateDetails(Details details) {
+    private static void validateDetails(Details details) {
         Objects.requireNonNull(details);
         if (details.title() == null || details.title().isBlank()
                 || details.maxParticipant() < 1
@@ -162,24 +167,36 @@ public class MatchEntity {
                 || !details.endAt().isAfter(details.startAt())) {
             throw new IllegalArgumentException("Invalid match title, capacity or time range");
         }
-        title = Objects.requireNonNull(details.title());
+        Objects.requireNonNull(details.skillLevel());
+        Objects.requireNonNull(details.sportType());
+        Objects.requireNonNull(details.genderGroup());
+    }
+
+    private void updateDetails(Details details) {
+        title = details.title();
         description = details.description();
-        startAt = Objects.requireNonNull(details.startAt());
-        endAt = Objects.requireNonNull(details.endAt());
+        startAt = details.startAt();
+        endAt = details.endAt();
         maxParticipant = details.maxParticipant();
-        skillLevel = Objects.requireNonNull(details.skillLevel());
-        sportType = Objects.requireNonNull(details.sportType());
-        genderGroup = Objects.requireNonNull(details.genderGroup());
+        skillLevel = details.skillLevel();
+        sportType = details.sportType();
+        genderGroup = details.genderGroup();
     }
 
     /** Copy facility values without introducing a cross-service JPA relation. */
-    private void copyFacility(FacilitySnapshot facility) {
+    private static void validateFacility(FacilitySnapshot facility) {
         Objects.requireNonNull(facility);
         if (facility.id() <= 0) throw new IllegalArgumentException("facilityId must be positive");
+        Objects.requireNonNull(facility.facilityName());
+        Objects.requireNonNull(facility.locationName());
+        Objects.requireNonNull(facility.region());
+    }
+
+    private void copyFacility(FacilitySnapshot facility) {
         facilityId = facility.id();
-        facilityName = Objects.requireNonNull(facility.facilityName());
-        locationName = Objects.requireNonNull(facility.locationName());
-        region = Objects.requireNonNull(facility.region());
+        facilityName = facility.facilityName();
+        locationName = facility.locationName();
+        region = facility.region();
         isFree = facility.isFree();
         url = facility.url();
     }

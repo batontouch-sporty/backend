@@ -55,6 +55,7 @@ class AuthorizationHeaderIntegrationTest {
             var received = exchange.getRequestHeaders();
             copy(received.getFirst(USER_ID), "Seen-User-Id", exchange);
             copy(received.getFirst(USER_ROLE), "Seen-User-Role", exchange);
+            copy(exchange.getRequestURI().getRawQuery(), "Seen-Query", exchange);
             exchange.getResponseHeaders().set("Seen-Path", exchange.getRequestURI().getRawPath());
             exchange.sendResponseHeaders(200, -1);
             exchange.close();
@@ -65,6 +66,7 @@ class AuthorizationHeaderIntegrationTest {
         for (String service : List.of("USER-SERVICE", "MATCH-SERVICE", "FACILITY-SERVICE", "AI-SERVICE")) {
             registry.add("spring.cloud.discovery.client.simple.instances." + service + "[0].uri", () -> uri);
         }
+        registry.add("PROMETHEUS_URL", () -> uri);
     }
 
     private static void copy(String value, String header, HttpExchange exchange) {
@@ -220,6 +222,96 @@ class AuthorizationHeaderIntegrationTest {
     }
 
     @Test
+    void adminQueriesPrometheusWithPathAndQueryKept() {
+        String admin = accessToken("1", "ADMIN");
+        String[][] cases = {
+                {"/api/v1/query", "query=up"},
+                {"/api/v1/query", "query=up%7Bjob%3D%22prometheus%22%7D"},
+                {"/api/v1/query", "query=rate(http_requests_total%5B5m%5D)%2B1&time=1798675200"},
+                {"/api/v1/query_range", "query=up&start=1798671600&end=1798675200&step=15"}
+        };
+        for (String[] target : cases) {
+            request(HttpMethod.GET, "/prometheus" + target[0] + "?" + target[1], admin).exchange()
+                    .expectStatus().isOk()
+                    .expectHeader().valueEquals("Seen-Path", target[0])
+                    .expectHeader().valueEquals("Seen-Query", target[1]);
+        }
+    }
+
+    @Test
+    void prometheusQueryNeedsAdmin() {
+        String user = accessToken("7", "USER");
+        for (String path : List.of(
+                "/prometheus/api/v1/query?query=up",
+                "/prometheus/api/v1/query_range?query=up&start=1&end=2&step=15",
+                "/%70rometheus/api/v1/query?query=up",
+                "/prometheus;v=1/api/v1/query?query=up",
+                "/prometheus/api/v1/query/?query=up",
+                "/prometheus/api/v1/query;x=..%2Flabels?query=up",
+                "/prometheus/api/v1/query;a=%2Fadmin%2Ftsdb%2Fdelete_series",
+                "/prometheus/api/v1/%71uery?query=up")) {
+            request(HttpMethod.GET, path, user).exchange()
+                    .expectStatus().isForbidden()
+                    .expectHeader().doesNotExist("Seen-Path")
+                    .expectBody()
+                    .jsonPath("$.code").isEqualTo("FORBIDDEN");
+            expectUnauthorized(HttpMethod.GET, path, null);
+        }
+    }
+
+    @Test
+    void prometheusStopsAtGatewayExceptQueries() {
+        String admin = accessToken("1", "ADMIN");
+        String[][] notRouted = {
+                {"POST", "/prometheus/api/v1/query"},
+                {"POST", "/prometheus/api/v1/query_range"},
+                {"PUT", "/prometheus/api/v1/query"},
+                {"DELETE", "/prometheus/api/v1/query"},
+                {"GET", "/prometheus/api/v1/labels"},
+                {"GET", "/prometheus/api/v1/query_exemplars"},
+                {"GET", "/prometheus/api/v1/status/config"},
+                {"GET", "/prometheus/api/v1/admin/tsdb/delete_series"},
+                {"POST", "/prometheus/api/v1/admin/tsdb/delete_series"},
+                {"PUT", "/prometheus/api/v1/admin/tsdb/delete_series"},
+                {"POST", "/prometheus/api/v1/%61dmin/tsdb/delete_series"},
+                {"POST", "/prometheus/api/v1/admin%2Ftsdb%2Fdelete_series"},
+                {"POST", "/prometheus/-/reload"},
+                {"POST", "/prometheus/-/quit"},
+                {"GET", "/prometheus/metrics"},
+                {"GET", "/prometheus"},
+                {"GET", "/prometheus/"},
+                {"GET", "/prometheus/api/v1/query/labels"},
+                {"GET", "/PROMETHEUS/api/v1/query"},
+                {"GET", "/prometheus/API/v1/query"},
+                {"GET", "/prometheus/api/v1/QUERY"},
+                {"GET", "//prometheus/api/v1/query"},
+                {"GET", "/%2570rometheus/api/v1/query"},
+                {"GET", "/prometheus%2Fapi%2Fv1%2Fquery"},
+                {"GET", "/prometheus/api/v1/query%5Clabels"}
+        };
+        for (String[] target : notRouted) {
+            for (String token : Arrays.asList(null, admin, accessToken("7", "USER"))) {
+                request(HttpMethod.valueOf(target[0]), target[1], token).exchange()
+                        .expectStatus().isNotFound()
+                        .expectHeader().doesNotExist("Seen-Path");
+            }
+        }
+    }
+
+    @Test
+    void prometheusTraversalIsRejected() {
+        for (String path : List.of(
+                "/prometheus/api/v1/query/../admin/tsdb/delete_series",
+                "/prometheus/api/v1/query/%2e%2e/labels",
+                "/prometheus/api/v1/query/%252e%252e/labels",
+                "/prometheus/api/v1/query%2F..%2Flabels")) {
+            request(HttpMethod.GET, path, accessToken("1", "ADMIN")).exchange()
+                    .expectStatus().is4xxClientError()
+                    .expectHeader().doesNotExist("Seen-Path");
+        }
+    }
+
+    @Test
     void parentSegmentPathsAreRejectedBeforeAuthentication() {
         String admin = accessToken("1", "ADMIN");
         for (String path : List.of(
@@ -251,7 +343,10 @@ class AuthorizationHeaderIntegrationTest {
 
     @Test
     void preflightPassesWithoutTokenAndStopsAtGateway() {
-        for (String path : List.of("/match-service/api/matches/me", "/user-service/api/admin/stats")) {
+        for (String path : List.of(
+                "/match-service/api/matches/me",
+                "/user-service/api/admin/stats",
+                "/prometheus/api/v1/query")) {
             preflight(path, ORIGIN).exchange()
                     .expectStatus().isOk()
                     .expectHeader().valueEquals(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, ORIGIN)

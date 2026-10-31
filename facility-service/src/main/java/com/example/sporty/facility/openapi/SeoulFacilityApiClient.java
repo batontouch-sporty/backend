@@ -82,7 +82,21 @@ public class SeoulFacilityApiClient {
             addRows(rows, page);
         }
 
+        verifyComplete(rows.size(), totalCount);
         return rows;
+    }
+
+    /**
+     * 중간 페이지가 비거나(INFO-200) 덜 오면 일부만 받은 상태다.
+     * 이대로 동기화하면 못 받은 시설이 사라진 시설로 비활성화되므로 동기화를 중단한다.
+     */
+    static void verifyComplete(int receivedCount, int totalCount) {
+        if (receivedCount != totalCount) {
+            throw new IllegalStateException(
+                    "서울시 체육시설 데이터를 일부만 받아 동기화를 중단합니다. 받은 건수 "
+                            + receivedCount + " / 전체 " + totalCount
+            );
+        }
     }
 
     private SeoulFacilityResponseDto fetchPage(int start, int end) {

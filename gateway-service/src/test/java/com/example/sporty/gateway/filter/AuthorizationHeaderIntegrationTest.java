@@ -56,6 +56,11 @@ class AuthorizationHeaderIntegrationTest {
             copy(received.getFirst(USER_ID), "Seen-User-Id", exchange);
             copy(received.getFirst(USER_ROLE), "Seen-User-Role", exchange);
             copy(received.getFirst(HttpHeaders.AUTHORIZATION), "Seen-Authorization", exchange);
+            // Prometheus는 Origin을 받으면 기본 설정으로 이 헤더를 붙인다.
+            if (exchange.getRequestURI().getRawPath().startsWith("/api/v1/")
+                    && received.containsKey(HttpHeaders.ORIGIN)) {
+                exchange.getResponseHeaders().set(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "*");
+            }
             copy(exchange.getRequestURI().getRawQuery(), "Seen-Query", exchange);
             exchange.getResponseHeaders().set("Seen-Path", exchange.getRequestURI().getRawPath());
             exchange.sendResponseHeaders(200, -1);
@@ -255,6 +260,15 @@ class AuthorizationHeaderIntegrationTest {
         request(HttpMethod.GET, "/user-service/api/admin/users", admin).exchange()
                 .expectStatus().isOk()
                 .expectHeader().valueEquals("Seen-Authorization", "Bearer " + admin);
+    }
+
+    @Test
+    void prometheusResponseHasSingleAllowOrigin() {
+        request(HttpMethod.GET, "/prometheus/api/v1/query?query=up", accessToken("1", "ADMIN"))
+                .header(HttpHeaders.ORIGIN, ORIGIN)
+                .exchange()
+                .expectStatus().isOk()
+                .expectHeader().valueEquals(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, ORIGIN);
     }
 
     @Test

@@ -13,6 +13,13 @@ spring:
     gateway:
       server:
         webflux:
+          # 프론트는 쿠키 없이 Authorization 헤더로만 인증하므로 allow-credentials는 켜지 않는다.
+          globalcors:
+            cors-configurations:
+              '[/**]':
+                allowed-origins: ${CORS_ALLOWED_ORIGIN:http://localhost:3000}
+                allowed-methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
+                allowed-headers: [Authorization, Content-Type]
           routes:
             - id: user-service
               uri: lb://USER-SERVICE

@@ -55,6 +55,7 @@ class AuthorizationHeaderIntegrationTest {
             var received = exchange.getRequestHeaders();
             copy(received.getFirst(USER_ID), "Seen-User-Id", exchange);
             copy(received.getFirst(USER_ROLE), "Seen-User-Role", exchange);
+            copy(received.getFirst(HttpHeaders.AUTHORIZATION), "Seen-Authorization", exchange);
             copy(exchange.getRequestURI().getRawQuery(), "Seen-Query", exchange);
             exchange.getResponseHeaders().set("Seen-Path", exchange.getRequestURI().getRawPath());
             exchange.sendResponseHeaders(200, -1);
@@ -236,6 +237,24 @@ class AuthorizationHeaderIntegrationTest {
                     .expectHeader().valueEquals("Seen-Path", target[0])
                     .expectHeader().valueEquals("Seen-Query", target[1]);
         }
+    }
+
+    @Test
+    void prometheusDoesNotReceiveTokenOrUserHeaders() {
+        String admin = accessToken("1", "ADMIN");
+        request(HttpMethod.GET, "/prometheus/api/v1/query?query=up", admin)
+                .header(USER_ID, "999")
+                .header(USER_ROLE, "USER")
+                .exchange()
+                .expectStatus().isOk()
+                .expectHeader().valueEquals("Seen-Path", "/api/v1/query")
+                .expectHeader().doesNotExist("Seen-Authorization")
+                .expectHeader().doesNotExist("Seen-User-Id")
+                .expectHeader().doesNotExist("Seen-User-Role");
+
+        request(HttpMethod.GET, "/user-service/api/admin/users", admin).exchange()
+                .expectStatus().isOk()
+                .expectHeader().valueEquals("Seen-Authorization", "Bearer " + admin);
     }
 
     @Test

@@ -62,6 +62,10 @@ spring:
                 - Method=GET
               filters:
                 - RewritePath=/prometheus/(?<segment>.*), /$\{segment}
+                # Prometheus는 토큰과 회원 정보를 쓰지 않으므로 넘기지 않는다.
+                - RemoveRequestHeader=Authorization
+                - RemoveRequestHeader=X-User-Id
+                - RemoveRequestHeader=X-User-Role
 
 jwt:
   secret: ${JWT_SECRET_KEY}

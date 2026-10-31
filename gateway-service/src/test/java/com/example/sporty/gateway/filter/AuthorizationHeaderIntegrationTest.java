@@ -108,6 +108,39 @@ class AuthorizationHeaderIntegrationTest {
     }
 
     @Test
+    void tokenIgnoredPathsPassExpiredTokenWithoutUserHeaders() {
+        String expired = token(SECRET, "7", "ACCESS", "USER", Instant.now().minus(Duration.ofMinutes(1)));
+        for (String path : List.of(
+                "/user-service/api/users",
+                "/user-service/api/auth/login",
+                "/user-service/api/auth/refresh")) {
+            request(HttpMethod.POST, path, expired)
+                    .header(USER_ID, "999")
+                    .header(USER_ROLE, "ADMIN")
+                    .exchange()
+                    .expectStatus().isOk()
+                    .expectHeader().doesNotExist("Seen-User-Id")
+                    .expectHeader().doesNotExist("Seen-User-Role");
+        }
+    }
+
+    @Test
+    void tokenIgnoredPathDoesNotPassValidTokenAsUser() {
+        request(HttpMethod.POST, "/user-service/api/auth/login", accessToken("7", "USER"))
+                .exchange()
+                .expectStatus().isOk()
+                .expectHeader().doesNotExist("Seen-User-Id")
+                .expectHeader().doesNotExist("Seen-User-Role");
+    }
+
+    @Test
+    void logoutStillNeedsValidToken() {
+        expectUnauthorized(HttpMethod.POST, "/user-service/api/auth/logout", null);
+        expectUnauthorized(HttpMethod.POST, "/user-service/api/auth/logout",
+                token(SECRET, "7", "ACCESS", "USER", Instant.now().minus(Duration.ofMinutes(1))));
+    }
+
+    @Test
     void privatePathWithoutTokenIsUnauthorized() {
         expectUnauthorized(HttpMethod.GET, "/match-service/api/matches/me", null);
         expectUnauthorized(HttpMethod.POST, "/match-service/api/matches", null);

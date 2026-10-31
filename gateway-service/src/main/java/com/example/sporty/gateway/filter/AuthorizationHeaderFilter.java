@@ -40,9 +40,11 @@ public class AuthorizationHeaderFilter implements GlobalFilter, Ordered {
     private static final String USER_ROLE = "X-User-Role";
     private static final String BEARER = "Bearer ";
 
+    // 만료된 토큰이 남아 있어도 가입·로그인·재발급은 되어야 하므로 토큰을 보지 않는다.
+    private static final Pattern TOKEN_IGNORED_REQUEST =
+            Pattern.compile("POST /user-service/api/(users|auth/(login|refresh))");
+
     private static final Pattern PUBLIC_REQUEST = Pattern.compile(String.join("|",
-            "POST /user-service/api/users",
-            "POST /user-service/api/auth/(login|refresh)",
             "GET /match-service/api/matches(/\\d+)?",
             "GET /facility-service/api/services(/\\d+)?",
             "POST /ai-service/api/ai/matches/search",
@@ -67,6 +69,9 @@ public class AuthorizationHeaderFilter implements GlobalFilter, Ordered {
         String rawPath = request.getURI().getRawPath();
         String authorization = request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
 
+        if (isTokenIgnored(request.getMethod(), rawPath)) {
+            return forward(exchange, chain, null);
+        }
         if (authorization == null) {
             return isPublic(request.getMethod(), rawPath)
                     ? forward(exchange, chain, null)
@@ -122,11 +127,19 @@ public class AuthorizationHeaderFilter implements GlobalFilter, Ordered {
         return response.writeWith(Mono.just(response.bufferFactory().wrap(body)));
     }
 
-    // 몇 번 디코딩할지에 따라 뜻이 달라지는 경로는 공개로 보지 않는다.
+    static boolean isTokenIgnored(HttpMethod method, String rawPath) {
+        return matchesEveryDecoding(TOKEN_IGNORED_REQUEST, method, rawPath);
+    }
+
     static boolean isPublic(HttpMethod method, String rawPath) {
+        return matchesEveryDecoding(PUBLIC_REQUEST, method, rawPath);
+    }
+
+    // 몇 번 디코딩할지에 따라 뜻이 달라지는 경로는 공개로 보지 않는다.
+    private static boolean matchesEveryDecoding(Pattern request, HttpMethod method, String rawPath) {
         List<String> paths = decodedPaths(rawPath);
         return !paths.isEmpty() && paths.stream()
-                .allMatch(path -> PUBLIC_REQUEST.matcher(method.name() + " " + path).matches());
+                .allMatch(path -> request.matcher(method.name() + " " + path).matches());
     }
 
     static boolean isAdmin(String rawPath) {

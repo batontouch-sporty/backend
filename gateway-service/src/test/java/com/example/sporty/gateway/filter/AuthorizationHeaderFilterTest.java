@@ -14,10 +14,35 @@ import io.jsonwebtoken.security.WeakKeyException;
 class AuthorizationHeaderFilterTest {
 
     @ParameterizedTest
+    @ValueSource(strings = {
+            "/user-service/api/users",
+            "/user-service/api/auth/login",
+            "/user-service/api/auth/refresh",
+            "/user-service/api/auth/%6cogin"
+    })
+    void tokenIgnoredRequests(String path) {
+        assertThat(AuthorizationHeaderFilter.isTokenIgnored(HttpMethod.POST, path)).isTrue();
+    }
+
+    @ParameterizedTest
     @CsvSource({
-            "POST, /user-service/api/users",
-            "POST, /user-service/api/auth/login",
-            "POST, /user-service/api/auth/refresh",
+            "GET, /user-service/api/auth/login",
+            "GET, /user-service/api/users",
+            "POST, /user-service/api/users/1",
+            "POST, /user-service/api/auth/logout",
+            "POST, /user-service/api/auth/login/%2e%2e/logout",
+            "POST, /user-service/api/auth/login/../logout",
+            "POST, /user-service/api/auth/LOGIN",
+            "POST, /user-service/api/auth/logout/%252e%252e/login",
+            "POST, /match-service/api/auth/login",
+            "POST, /match-service/../user-service/api/auth/login"
+    })
+    void tokenCheckedRequests(String method, String path) {
+        assertThat(AuthorizationHeaderFilter.isTokenIgnored(HttpMethod.valueOf(method), path)).isFalse();
+    }
+
+    @ParameterizedTest
+    @CsvSource({
             "GET, /match-service/api/matches",
             "GET, /match-service/api/matches/1",
             "GET, /facility-service/api/services",

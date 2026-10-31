@@ -242,7 +242,10 @@ class AuthorizationHeaderIntegrationTest {
     void internalBlockRunsBeforeAuthentication() {
         request(HttpMethod.GET, "/user-service/internal/users", null).exchange()
                 .expectStatus().isForbidden()
-                .expectBody().isEmpty();
+                .expectHeader().doesNotExist("Seen-Path")
+                .expectBody()
+                .jsonPath("$.code").isEqualTo("FORBIDDEN")
+                .jsonPath("$.message").isEqualTo("권한이 없습니다.");
     }
 
     private void expectUnauthorized(HttpMethod method, String path, String token) {

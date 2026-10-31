@@ -121,7 +121,7 @@ public class AuthorizationHeaderFilter implements GlobalFilter, Ordered {
         return chain.filter(exchange.mutate().request(request).build());
     }
 
-    private Mono<Void> reject(ServerWebExchange exchange, HttpStatus status, String code, String message) {
+    static Mono<Void> reject(ServerWebExchange exchange, HttpStatus status, String code, String message) {
         ServerHttpResponse response = exchange.getResponse();
         response.setStatusCode(status);
         response.getHeaders().setContentType(MediaType.APPLICATION_JSON);

@@ -32,8 +32,7 @@ public class InternalPathBlockFilter implements WebFilter, Ordered {
         String rawPath = exchange.getRequest().getURI().getRawPath();
         if (isInternal(rawPath)) {
             log.warn("Blocked internal path: {}", rawPath);
-            exchange.getResponse().setStatusCode(HttpStatus.FORBIDDEN);
-            return exchange.getResponse().setComplete();
+            return AuthorizationHeaderFilter.reject(exchange, HttpStatus.FORBIDDEN, "FORBIDDEN", "권한이 없습니다.");
         }
         return chain.filter(exchange);
     }

@@ -2,7 +2,6 @@ package com.example.sporty.user.commons.token;
 
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.JwtException;
 import com.example.sporty.user.commons.exception.auth.InvalidRefreshTokenException;
 import com.example.sporty.user.users.domain.entity.Role;
 import io.jsonwebtoken.security.Keys;
@@ -49,7 +48,8 @@ public class JwtProvider {
             Long userId = Long.valueOf(claims.getSubject());
             if (userId <= 0) throw new InvalidRefreshTokenException();
             return userId;
-        } catch (JwtException | IllegalArgumentException exception) {
+        } catch (RuntimeException exception) {
+            // 형식이 깨진 토큰은 jjwt가 JwtException 밖의 예외도 던진다.
             throw new InvalidRefreshTokenException();
         }
     }

@@ -57,7 +57,7 @@ class TokenRefreshTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"{}", "{\"refreshToken\":null}", "{\"refreshToken\":\"\"}", "{\"refreshToken\":\"bad-token\"}"})
+    @ValueSource(strings = {"{}", "{\"refreshToken\":null}", "{\"refreshToken\":\"\"}", "{\"refreshToken\":\"bad-token\"}", "{\"refreshToken\":\"W10.W10.\"}"})
     void rejectsMissingAndMalformedTokens(String body) throws Exception {
         mvc.perform(post("/api/auth/refresh").contentType("application/json").content(body))
                 .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value("INVALID_REFRESH_TOKEN"));

@@ -44,3 +44,7 @@ MariaDB 테스트는 별도 전용 DB에서만 `SAGA_TEST_JDBC=jdbc:mariadb://lo
 - H2/MariaDB 테스트 스키마의 aggregate_id 인덱스를 메타데이터로 확인
 - 공식 R7 DDL 원본은 덮어쓰지 않음. DBA가 docs/sql/003_match_outbox_aggregate_index.sql을 추가 적용하고 공식 스키마에 병합해야 함
 - 일반 CI는 외부 Docker가 필요 없는 테스트를 실행하고, WithdrawalDltBrokerTest는 전용 SAGA_TEST_BROKER 설정이 없으면 생략
+
+## 두 번째 리뷰 재검증
+
+MATCH_WITHDRAWAL_ENABLED=true 환경에서 비활성 테스트는 false를 명시하도록 수정. 실제 MariaDB·Kafka 포함 17개 테스트 실패/오류 0, bootJar 및 diff 검사 통과. 트랜잭션 원자성, 커밋 직전 마감 초과 롤백, 요청 ID·Saga ID 연결, 동시 중복 수신, 이력 보존, Outbox ACK/실패/중복 발행 방지, DLT 파티션 경로를 재검증했다. 추가 재현된 기능 오류는 없으며 서비스 간 통합 한계는 위 기록과 동일하다. DLT 개명 제안은 R7의 명시적 `<토픽>.DLT` 계약에 따라 미반영했다.

@@ -43,3 +43,9 @@ Refs #34
 - outbox_event.aggregate_id 조회 인덱스: DBA 적용용 docs/sql/003_match_outbox_aggregate_index.sql과 두 테스트 스키마에 반영. 앱이 DDL 실행하지 않으며 팀 공식 R7에 보완 적용 필요
 - 주요 트랜잭션·재시도·중복 처리 메서드 설명 보완
 - 수정 후 실제 MariaDB/Kafka 포함 테스트 17개 및 빌드 통과
+
+## 추가 리뷰 반영 판단
+
+- health 비활성 테스트에 false를 명시해 외부 환경변수 영향 제거
+- DLT 이름 변경 제안은 R7 공통 규칙 `<토픽>.DLT`에 따라 미반영
+- MATCH_WITHDRAWAL_ENABLED=true 및 실제 MariaDB/Kafka 환경에서 테스트 17개·빌드 재통과

@@ -48,3 +48,9 @@ Docker 기동 후 MariaDB 12개 테스트와 실제 Kafka 송수신·중복·DLT
 - DLT는 원본 파티션을 강제하지 않고 -1로 Kafka에 위임한다. 원본 파티션 정보는 DLT 헤더로 확인 가능하다.
 - DBA는 R7 적용 후 docs/sql/003_match_outbox_aggregate_index.sql을 추가 적용하고 공식 DDL에도 같은 인덱스를 병합해야 한다. 앱 계정은 DDL을 실행하지 않는다. 두 테스트 스키마에도 같은 정의를 반영했다.
 - DB health는 MATCH_WITHDRAWAL_ENABLED(기본 false)에 따른다. 추후 CRUD가 항상 DB를 요구하면 서비스 전체 DB health 정책을 함께 재조정해야 한다.
+
+## 추가 리뷰 판단
+
+- 비활성 health 테스트: MATCH_WITHDRAWAL_ENABLED=false를 명시해 개발자/CI 환경의 true 값에 영향받지 않도록 수정.
+- DLT를 .v1로 끝나도록 개명하자는 제안: 미반영. 팀 R7 탈퇴Saga 이벤트 수정안 공통 규칙은 명시적으로 `<토픽>.DLT`이며, 현재 `user.withdrawal-requested.v1.DLT`가 계약과 일치한다. 일반 업무 토픽 이름 규칙을 DLT에 일괄 적용하면 기존 배포/운영 소비 경로와 어긋나므로 변경하지 않는다.
+- 현재 #34 범위의 트랜잭션·요청 상관관계·마감 롤백·중복·DLT·Outbox 재시도 경로를 재검토. 실제 회원/알림 통합, #35 대기열 연결 및 DBA 인덱스 반영은 기존과 같이 별도다.

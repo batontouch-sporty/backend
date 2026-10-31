@@ -16,6 +16,6 @@ class WithdrawalHealthConfigurationTest {
             var sources=new YamlPropertySourceLoader().load("actual-match-yaml",new ClassPathResource("application.yml"));
             sources.forEach(source->context.getEnvironment().getPropertySources().addLast(source));
         }catch(java.io.IOException ex){throw new IllegalStateException(ex);}});
-    @Test void disabledSagaDoesNotMakeDbHealthMandatory(){runner.run(context->assertThat(context).doesNotHaveBean("dbHealthContributor"));}
+    @Test void disabledSagaDoesNotMakeDbHealthMandatory(){runner.withPropertyValues("MATCH_WITHDRAWAL_ENABLED=false").run(context->assertThat(context).doesNotHaveBean("dbHealthContributor"));}
     @Test void enabledSagaIncludesDbHealth(){runner.withPropertyValues("MATCH_WITHDRAWAL_ENABLED=true").run(context->assertThat(context).hasBean("dbHealthContributor"));}
 }

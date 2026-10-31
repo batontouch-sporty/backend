@@ -58,7 +58,7 @@ spring:
             - id: prometheus
               uri: ${PROMETHEUS_URL:http://localhost:9090}
               predicates:
-                - Path=/prometheus/api/v1/query,/prometheus/api/v1/query_range
+                - Path=/prometheus/api/v1/query,/prometheus/api/v1/query_range,false
                 - Method=GET
               filters:
                 - RewritePath=/prometheus/(?<segment>.*), /$\{segment}

@@ -279,7 +279,6 @@ class AuthorizationHeaderIntegrationTest {
                 "/prometheus/api/v1/query_range?query=up&start=1&end=2&step=15",
                 "/%70rometheus/api/v1/query?query=up",
                 "/prometheus;v=1/api/v1/query?query=up",
-                "/prometheus/api/v1/query/?query=up",
                 "/prometheus/api/v1/query;x=..%2Flabels?query=up",
                 "/prometheus/api/v1/query;a=%2Fadmin%2Ftsdb%2Fdelete_series",
                 "/prometheus/api/v1/%71uery?query=up")) {
@@ -313,6 +312,8 @@ class AuthorizationHeaderIntegrationTest {
                 {"GET", "/prometheus/metrics"},
                 {"GET", "/prometheus"},
                 {"GET", "/prometheus/"},
+                {"GET", "/prometheus/api/v1/query/"},
+                {"GET", "/prometheus/api/v1/query_range/"},
                 {"GET", "/prometheus/api/v1/query/labels"},
                 {"GET", "/PROMETHEUS/api/v1/query"},
                 {"GET", "/prometheus/API/v1/query"},

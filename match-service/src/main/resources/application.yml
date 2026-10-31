@@ -6,10 +6,13 @@ spring:
     name: match-service
   datasource:
     url: jdbc:mariadb://${MATCH_DB_HOST:localhost}:${MARIADB_HOST_PORT:3306}/match_db
-    username: match_app
-    password: ${MATCH_APP_PASSWORD:}
+    username: ${MATCH_DB_USERNAME:match_app}
+    password: ${MATCH_APP_PASSWORD}
   config:
-    import: optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}
+    import:
+      - optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}
+      - optional:file:./.env[.properties]
+      - optional:file:../.env[.properties]
 
 eureka:
   instance:
@@ -22,7 +25,7 @@ eureka:
 management:
   health:
     db:
-      enabled: ${MATCH_WITHDRAWAL_ENABLED:false}
+      enabled: ${MATCH_DB_HEALTH_ENABLED:true}
   endpoints:
     web:
       exposure:

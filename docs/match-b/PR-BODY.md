@@ -35,3 +35,11 @@ Refs #34
 - 호성 담당 CRUD 코드와 파일이 겹치지 않도록 Saga 저장소를 별도 구성. 공유 R7 테이블의 상태·잠금 정책 확인 요청
 - JDBC와 향후 JPA가 같은 DataSource/트랜잭션 관리자를 사용하도록 유지
 - 공식 회원·알림 서비스와 통합 검증 후 머지/활성화
+
+## 리뷰 반영
+
+- DLT 파티션 수 불일치: Kafka에 파티션 선택 위임(-1), 실제 7번 원본 → 단일 파티션 DLT 검증
+- Saga 비활성화 시 DB health도 비활성화, 활성화 시 DB health 포함
+- outbox_event.aggregate_id 조회 인덱스: DBA 적용용 docs/sql/003_match_outbox_aggregate_index.sql과 두 테스트 스키마에 반영. 앱이 DDL 실행하지 않으며 팀 공식 R7에 보완 적용 필요
+- 주요 트랜잭션·재시도·중복 처리 메서드 설명 보완
+- 수정 후 실제 MariaDB/Kafka 포함 테스트 17개 및 빌드 통과

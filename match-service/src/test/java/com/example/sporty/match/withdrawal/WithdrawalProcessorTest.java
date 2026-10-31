@@ -93,4 +93,12 @@ class WithdrawalProcessorTest {
         assertThatThrownBy(()->processor.handle(request(2))).isInstanceOf(IllegalStateException.class);
         assertThat(count("outbox_event")).isZero();assertThat(count("processed_events")).isZero();assertThat(jdbc.queryForObject("SELECT status FROM matches WHERE id=?",String.class,id)).isEqualTo("RECRUITING");
     }
+    @Test void sagaOutboxLookupHasAggregateIndex()throws Exception{
+        try(var connection=jdbc.getDataSource().getConnection();var indexes=connection.getMetaData().getIndexInfo(connection.getCatalog(),null,System.getenv("SAGA_TEST_JDBC")==null?"OUTBOX_EVENT":"outbox_event",false,false)){
+            boolean found=false;
+            while(indexes.next())if("idx_outbox_event_aggregate_id".equalsIgnoreCase(indexes.getString("INDEX_NAME"))&&"aggregate_id".equalsIgnoreCase(indexes.getString("COLUMN_NAME")))found=true;
+            assertThat(found).isTrue();
+        }
+    }
+
 }

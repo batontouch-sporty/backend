@@ -16,6 +16,7 @@ public class WithdrawalOutboxRelay {
     private final JdbcTemplate jdbc;private final KafkaTemplate<String,String> kafka;private final TransactionTemplate tx;
     public WithdrawalOutboxRelay(JdbcTemplate jdbc,@Qualifier("withdrawalKafkaTemplate")KafkaTemplate<String,String> kafka,PlatformTransactionManager manager){this.jdbc=jdbc;this.kafka=kafka;tx=new TransactionTemplate(manager);}
     @Scheduled(fixedDelayString="${match.withdrawal.outbox-delay-ms:1000}")
+    /** Lock pending Saga rows and mark published only after Kafka ACK; failures stay retryable. */
     public void publish(){
         try{
             var ids=jdbc.queryForList("SELECT event_id FROM outbox_event WHERE published_at IS NULL AND (event_type IN ('match.withdrawal-cleaned.v1','match.withdrawal-rejected.v1') OR (event_type='match.status-changed.v1' AND JSON_VALUE(payload,'$.sagaId') IS NOT NULL)) ORDER BY created_at,event_id LIMIT 50",String.class);

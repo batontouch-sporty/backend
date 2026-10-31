@@ -11,6 +11,10 @@ public class WithdrawalStore {
     public WithdrawalStore(JdbcTemplate jdbc,ObjectMapper mapper){this.jdbc=jdbc;this.mapper=mapper;}
     public boolean processed(String id){return jdbc.queryForObject("SELECT COUNT(*) FROM processed_events WHERE event_id=?",Long.class,id)>0;}
     public void mark(String id){jdbc.update("INSERT INTO processed_events(event_id,event_type) VALUES (?,?)",id,"user.withdrawal-requested.v1");}
+    /** Search this user's indexed outbox history and compare the original Saga in JSON.
+     * Published rows remain deduplication evidence; retention must preserve that contract.
+     * DBA applies docs/sql/003_match_outbox_aggregate_index.sql before activation.
+     */
     public boolean completed(WithdrawalRequest request){
         return jdbc.queryForList("SELECT payload FROM outbox_event WHERE aggregate_id=? AND event_type IN ('match.withdrawal-cleaned.v1','match.withdrawal-rejected.v1')",String.class,request.userId().toString())
             .stream().anyMatch(json->{try{return request.sagaId().equals(mapper.readTree(json).path("sagaId").asText());}catch(Exception ex){throw new IllegalStateException(ex);}});
@@ -24,12 +28,14 @@ public class WithdrawalStore {
     public long owner(long matchId){return jdbc.queryForObject("SELECT user_id FROM match_participants WHERE match_id=? AND role='OWNER'",Long.class,matchId);}
     public void cancel(long id,Instant now){jdbc.update("UPDATE matches SET status='CANCELLED',cancel_reason='USER_WITHDRAWAL',cancelled_at=?,status_changed_at=? WHERE id=?",java.sql.Timestamp.from(now),java.sql.Timestamp.from(now),id);}
     public void leave(long id,long userId){jdbc.update("DELETE FROM match_participants WHERE match_id=? AND user_id=? AND role='PARTICIPANT'",id,userId);}
+    /** Reopen a pre-start closed match only when cleanup has actually freed capacity. */
     public boolean reopen(Match match,Instant now){
         if(!"CLOSED".equals(match.status()))return false;
         long count=jdbc.queryForObject("SELECT COUNT(*) FROM match_participants WHERE match_id=?",Long.class,match.id());
         if(count>=match.capacity())return false;
         jdbc.update("UPDATE matches SET status='RECRUITING',status_changed_at=? WHERE id=?",java.sql.Timestamp.from(now),match.id());return true;
     }
+    /** Persist an event identity and JSON payload within the caller's cleanup transaction. */
     public void emit(String topic,long key,Map<String,Object> fields,Instant now){
         var payload=new LinkedHashMap<String,Object>(fields);String eventId=UUID.randomUUID().toString();
         payload.put("eventId",eventId);

@@ -15,6 +15,7 @@ public class MemberLocks {
     public MemberLocks(DataSource dataSource){this.dataSource=dataSource;}
     private static final ConcurrentMap<Long,ReentrantLock> TEST_LOCKS=new ConcurrentHashMap<>();
     @Transactional(propagation=Propagation.MANDATORY)
+    /** Serialize member writes across replicas on the transaction-bound DB session. */
     public void lock(Long userId){
         Connection connection=DataSourceUtils.getConnection(dataSource);
         try {

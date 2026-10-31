@@ -20,6 +20,9 @@ eureka:
       defaultZone: ${EUREKA_URL:http://localhost:8761/eureka}
 
 management:
+  health:
+    db:
+      enabled: ${MATCH_WITHDRAWAL_ENABLED:false}
   endpoints:
     web:
       exposure:

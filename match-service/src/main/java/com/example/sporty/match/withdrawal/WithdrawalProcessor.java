@@ -15,11 +15,13 @@ public class WithdrawalProcessor {
     }
     private static class DeadlineExceeded extends RuntimeException {}
     private boolean expired(WithdrawalRequest r){return !clock.instant().isBefore(r.deadlineAt().toInstant());}
+    /** Roll back expired cleanup before persisting a standalone rejection transaction. */
     public void handle(WithdrawalRequest r){
         r.validate();
         try{tx.executeWithoutResult(s->process(r));}
         catch(DeadlineExceeded ex){tx.executeWithoutResult(s->{locks.lock(r.userId());if(!store.processed(r.eventId())&&!store.completed(r))finish(r,"DEADLINE_EXCEEDED",List.of(),List.of(),List.of());});}
     }
+    /** Lock affected matches, reject running owners, and atomically persist cleanup and results. */
     private void process(WithdrawalRequest r){
         locks.lock(r.userId());if(store.processed(r.eventId()))return;
         if(store.completed(r)){store.mark(r.eventId());return;}
@@ -44,6 +46,7 @@ public class WithdrawalProcessor {
     private void status(WithdrawalRequest r,WithdrawalStore.Match m,String from,String to,long owner,List<Long> recipients){
         store.emit("match.status-changed.v1",m.id(),Map.of("matchId",m.id(),"title",m.title(),"from",from,"to",to,"ownerId",owner,"participantIds",recipients,"reason","USER_WITHDRAWAL","sagaId",r.sagaId()),clock.instant());
     }
+    /** Correlate the result with the request and record consumption in the same transaction. */
     private void finish(WithdrawalRequest r,String reason,List<Long> canceled,List<Long> left,List<Long> blocking){
         boolean cleaned=reason==null;var fields=new LinkedHashMap<String,Object>();fields.put("sagaId",r.sagaId());fields.put("requestEventId",r.eventId());fields.put("userId",r.userId());
         fields.put(cleaned?"cleanedAt":"rejectedAt",clock.instant().atOffset(ZoneOffset.UTC).toString());

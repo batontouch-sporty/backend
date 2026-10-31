@@ -63,3 +63,4 @@ CREATE TABLE outbox_event (
   PRIMARY KEY (event_id),
   KEY idx_match_outbox_unpublished (published_at,created_at)
 ) ENGINE=InnoDB;
+CREATE INDEX idx_outbox_event_aggregate_id ON outbox_event (aggregate_id);

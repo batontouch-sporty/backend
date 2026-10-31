@@ -42,3 +42,9 @@ MariaDB 실행 시도는 Docker 데몬이 실행되지 않아 진행하지 못�
 ## 실제 환경 검증 추가
 
 Docker 기동 후 MariaDB 12개 테스트와 실제 Kafka 송수신·중복·DLT·장애 복구 검증을 완료했다. 위의 Docker 미실행/Kafka 모의 검증 한계는 초기 기록이며, 최신 결과는 [verification.md](verification.md)를 기준으로 한다. 실제 회원·알림 서비스와 팀 전체 Compose 연동은 여전히 별도다.
+
+## CodeRabbit 검토 보완
+
+- DLT는 원본 파티션을 강제하지 않고 -1로 Kafka에 위임한다. 원본 파티션 정보는 DLT 헤더로 확인 가능하다.
+- DBA는 R7 적용 후 docs/sql/003_match_outbox_aggregate_index.sql을 추가 적용하고 공식 DDL에도 같은 인덱스를 병합해야 한다. 앱 계정은 DDL을 실행하지 않는다. 두 테스트 스키마에도 같은 정의를 반영했다.
+- DB health는 MATCH_WITHDRAWAL_ENABLED(기본 false)에 따른다. 추후 CRUD가 항상 DB를 요구하면 서비스 전체 DB health 정책을 함께 재조정해야 한다.

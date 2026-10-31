@@ -35,3 +35,12 @@
 MariaDB 테스트는 별도 전용 DB에서만 `SAGA_TEST_JDBC=jdbc:mariadb://localhost:33346/match_saga_r7_review`, `SAGA_TEST_DB_PASSWORD`를 설정한 뒤 `:match-service:test --rerun-tasks`를 실행한다. 이 테스트는 전용 DB의 테이블 4개를 매번 재생성하므로 팀 DB에서 실행하지 않는다.
 
 실제 브로커 검증용 스크립트·상세 로그는 로컬 C:/inspire_6th/work/에 보존했다. 기존 코드 변경 없이 검증 통과했으며 제품 코드 수정은 이번 검증에서 필요하지 않았다.
+
+## CodeRabbit 보완 검증
+
+- 수정 후 실제 MariaDB·Kafka 환경 테스트 17개, 실패 0, 오류 0 및 bootJar 통과
+- 원본 ConsumerRecord partition=7을 한 파티션 DLT로 보낼 때 Kafka가 partition=0을 선택하는 실제 전송 확인
+- 기본 Saga 비활성화 시 dbHealthContributor 없음, 활성화 시 있음: 실제 application.yml을 읽는 구성 테스트 2개
+- H2/MariaDB 테스트 스키마의 aggregate_id 인덱스를 메타데이터로 확인
+- 공식 R7 DDL 원본은 덮어쓰지 않음. DBA가 docs/sql/003_match_outbox_aggregate_index.sql을 추가 적용하고 공식 스키마에 병합해야 함
+- 일반 CI는 외부 Docker가 필요 없는 테스트를 실행하고, WithdrawalDltBrokerTest는 전용 SAGA_TEST_BROKER 설정이 없으면 생략

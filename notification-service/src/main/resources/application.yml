@@ -5,7 +5,24 @@ spring:
   application:
     name: notification-service
   config:
-    import: optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}
+    # 로컬 실행 때는 저장소 루트의 .env(docker compose와 같은 파일)에서 DB 비밀번호·포트를 읽는다.
+    import:
+      - optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}
+      - optional:file:./.env[.properties]
+      - optional:file:../.env[.properties]
+  datasource:
+    driver-class-name: org.mariadb.jdbc.Driver
+    url: jdbc:mariadb://${NOTIFICATION_DB_HOST:localhost}:${MARIADB_HOST_PORT:3306}/notification_db
+    username: ${NOTIFICATION_DB_USERNAME:notification_app}
+    password: ${NOTIFICATION_APP_PASSWORD}
+  jpa:
+    # 테이블 명세(R4) 적용 방식이 정해지면 validate로 바꾼다.
+    hibernate:
+      ddl-auto: ${NOTIFICATION_DB_DDL_AUTO:update}
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MariaDBDialect
 
 eureka:
   instance:

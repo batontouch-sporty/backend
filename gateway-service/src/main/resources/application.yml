@@ -5,7 +5,10 @@ spring:
   application:
     name: gateway-service
   config:
-    import: optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}
+    # 로컬 실행 때는 저장소 루트의 .env(docker compose와 같은 파일)에서 JWT 비밀값을 읽는다.
+    import:
+      - optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}
+      - optional:file:../.env[.properties]
   cloud:
     gateway:
       server:

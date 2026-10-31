@@ -74,10 +74,8 @@ public class AuthorizationHeaderFilter implements GlobalFilter, Ordered {
         if (isTokenIgnored(request.getMethod(), rawPath)) {
             return forward(exchange, chain, null);
         }
-        if (authorization == null) {
-            return isPublic(request.getMethod(), rawPath)
-                    ? forward(exchange, chain, null)
-                    : reject(exchange, HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "인증이 필요합니다.");
+        if (authorization == null && isPublic(request.getMethod(), rawPath)) {
+            return forward(exchange, chain, null);
         }
 
         LoginUser user = authenticate(authorization);
@@ -91,7 +89,7 @@ public class AuthorizationHeaderFilter implements GlobalFilter, Ordered {
     }
 
     private LoginUser authenticate(String authorization) {
-        if (!authorization.startsWith(BEARER)) {
+        if (authorization == null || !authorization.startsWith(BEARER)) {
             return null;
         }
         try {
@@ -160,12 +158,12 @@ public class AuthorizationHeaderFilter implements GlobalFilter, Ordered {
                 .anyMatch(".."::equals);
     }
 
-    private static Stream<String> segments(String path) {
+    static Stream<String> segments(String path) {
         return SEPARATOR.splitAsStream(path).map(segment -> segment.split(";", 2)[0]);
     }
 
-    // InternalPathBlockFilter와 같은 이유로 최대 3번까지 디코딩하고, 단계별 경로를 모두 돌려준다.
-    private static List<String> decodedPaths(String rawPath) {
+    // %2569처럼 여러 번 인코딩한 경로도 잡는다. 3번을 넘는 인코딩은 뒤 서비스도 풀지 않는다.
+    static List<String> decodedPaths(String rawPath) {
         List<String> paths = new ArrayList<>();
         String path = rawPath;
         for (int i = 0; i < 3; i++) {

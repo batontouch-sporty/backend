@@ -41,33 +41,44 @@ public class WithdrawalOutboxRelay {
                                 + " JSON_VALUE(payload,'$.sagaId') IS NOT NULL)) ORDER BY"
                                 + " created_at,event_id LIMIT 50",
                             String.class);
-            for (String id : ids)
-                tx.executeWithoutResult(
-                        s -> {
-                            var rows =
-                                    jdbc.queryForList(
-                                            "SELECT aggregate_id,event_type,payload FROM"
-                                                + " outbox_event WHERE event_id=? AND published_at"
-                                                + " IS NULL FOR UPDATE",
-                                            id);
-                            if (rows.isEmpty()) return;
-                            var row = rows.get(0);
-                            try {
-                                kafka.send(
-                                                (String) row.get("event_type"),
-                                                (String) row.get("aggregate_id"),
-                                                (String) row.get("payload"))
-                                        .get(5, TimeUnit.SECONDS);
-                            } catch (Exception ex) {
-                                if (ex instanceof InterruptedException)
-                                    Thread.currentThread().interrupt();
-                                throw new IllegalStateException("Saga Outbox publish failed", ex);
-                            }
-                            jdbc.update(
-                                    "UPDATE outbox_event SET published_at=CURRENT_TIMESTAMP(6)"
-                                        + " WHERE event_id=?",
-                                    id);
-                        });
+            for (String id : ids) {
+                try {
+                    tx.executeWithoutResult(
+                            s -> {
+                                var rows =
+                                        jdbc.queryForList(
+                                                "SELECT aggregate_id,event_type,payload FROM"
+                                                    + " outbox_event WHERE event_id=? AND"
+                                                    + " published_at IS NULL FOR UPDATE",
+                                                id);
+                                if (rows.isEmpty()) return;
+                                var row = rows.get(0);
+                                try {
+                                    kafka.send(
+                                                    (String) row.get("event_type"),
+                                                    (String) row.get("aggregate_id"),
+                                                    (String) row.get("payload"))
+                                            .get(5, TimeUnit.SECONDS);
+                                } catch (Exception ex) {
+                                    if (ex instanceof InterruptedException)
+                                        Thread.currentThread().interrupt();
+                                    throw new IllegalStateException(
+                                            "Saga Outbox publish failed", ex);
+                                }
+                                jdbc.update(
+                                        "UPDATE outbox_event SET published_at=CURRENT_TIMESTAMP(6)"
+                                                + " WHERE event_id=?",
+                                        id);
+                            });
+                } catch (RuntimeException ex) {
+                    // Keep this row pending, but do not hold up another member's Saga result.
+                    LoggerFactory.getLogger(getClass())
+                            .warn("Saga Outbox row retry required: {}", id, ex);
+                    if (Thread.currentThread().isInterrupted()) {
+                        return;
+                    }
+                }
+            }
         } catch (RuntimeException ex) {
             LoggerFactory.getLogger(getClass()).warn("Saga Outbox retry required", ex);
         }

@@ -171,6 +171,20 @@ class AuthorizationHeaderIntegrationTest {
     }
 
     @Test
+    void malformedTokensAreUnauthorizedNotServerError() {
+        String publicPath = "/match-service/api/matches";
+        expectUnauthorized(HttpMethod.GET, publicPath, "W10.W10.");
+        expectUnauthorized(HttpMethod.GET, publicPath, "ImEi.ImEi.AAAA");
+        expectUnauthorized(HttpMethod.GET, publicPath, Jwts.builder()
+                .setSubject("7")
+                .claim("tokenType", "ACCESS")
+                .claim("role", "USER")
+                .claim("exp", List.of(1, 2))
+                .signWith(Keys.hmacShaKeyFor(SECRET.getBytes(StandardCharsets.UTF_8)))
+                .compact());
+    }
+
+    @Test
     void nonBearerAuthorizationIsUnauthorized() {
         client().get().uri(uri("/match-service/api/matches"))
                 .header(HttpHeaders.AUTHORIZATION, "Basic abc")

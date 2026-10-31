@@ -22,7 +22,6 @@ import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.util.UriUtils;
 
 import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.JwtParser;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
@@ -101,7 +100,8 @@ public class AuthorizationHeaderFilter implements GlobalFilter, Ordered {
                     && userId > 0
                     && ("USER".equals(role) || "ADMIN".equals(role));
             return valid ? new LoginUser(Long.toString(userId), role) : null;
-        } catch (JwtException | IllegalArgumentException e) {
+        } catch (RuntimeException e) {
+            // jjwt는 JwtException 말고도 망가진 토큰에 ClassCastException, IllegalStateException을 던진다.
             return null;
         }
     }

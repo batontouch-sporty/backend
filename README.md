@@ -15,3 +15,13 @@ AI 기반 생활체육 매칭 플랫폼 Sporty_v2의 백엔드 저장소입니�
 
 - 기술 스택: Java 17, Spring Boot 3.5.x, Spring Cloud 2025.0.x, MariaDB, Redis, Kafka
 - 비밀값은 `.env`에만 두고 커밋하지 않습니다. 예시는 `.env.example`에 적습니다.
+
+## 실행
+
+```bash
+cp .env.example .env
+docker compose up -d --build --wait         # 전체
+docker compose up -d mariadb redis kafka    # 인프라만
+```
+
+외부 공개 포트는 Gateway 8000뿐입니다. 기동 직후 약 30초는 Gateway가 503을 줄 수 있습니다.

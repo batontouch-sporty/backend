@@ -37,7 +37,9 @@ public class WithdrawalKafkaConfiguration {
                                 "acks",
                                 "all",
                                 "enable.idempotence",
-                                true)));
+                                true,
+                                "max.block.ms",
+                                1000L)));
     }
 
     @Bean

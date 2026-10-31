@@ -191,4 +191,60 @@ class WithdrawalOutboxRelayTest {
             Thread.interrupted();
         }
     }
+
+    @SuppressWarnings("unchecked")
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"ACK", "METADATA", "DELIVERY"})
+    void timeoutStopsBatchAndNextPollRetriesUnchangedEvents(String timeoutKind) throws Exception {
+        var jdbc = mock(JdbcTemplate.class);
+        var kafka = (KafkaTemplate<String, String>) mock(KafkaTemplate.class);
+        var manager = new Manager();
+        var first = row("event-1", "2");
+        var second = row("event-2", "3");
+        when(jdbc.queryForList(anyString(), eq(String.class)))
+                .thenReturn(List.of("event-1", "event-2"));
+        when(jdbc.queryForList(anyString(), eq("event-1"))).thenReturn(List.of(first));
+        when(jdbc.queryForList(anyString(), eq("event-2"))).thenReturn(List.of(second));
+        var ackFuture =
+                (CompletableFuture<SendResult<String, String>>) mock(CompletableFuture.class);
+        when(ackFuture.get(5, TimeUnit.SECONDS))
+                .thenThrow(new TimeoutException("ACK wait exceeded"));
+        var send = when(kafka.send(anyString(), eq("2"), eq((String) first.get("payload"))));
+        switch (timeoutKind) {
+            case "ACK" -> send.thenReturn(ackFuture, CompletableFuture.completedFuture(null));
+            case "METADATA" ->
+                    send.thenThrow(
+                                    new org.apache.kafka.common.errors.TimeoutException(
+                                            "metadata unavailable"))
+                            .thenReturn(CompletableFuture.completedFuture(null));
+            case "DELIVERY" ->
+                    send.thenReturn(
+                            CompletableFuture.failedFuture(
+                                    new org.apache.kafka.common.errors.TimeoutException(
+                                            "delivery expired")),
+                            CompletableFuture.completedFuture(null));
+            default -> throw new IllegalArgumentException(timeoutKind);
+        }
+        when(kafka.send(anyString(), eq("3"), eq((String) second.get("payload"))))
+                .thenReturn(CompletableFuture.completedFuture(null));
+        var relay = new WithdrawalOutboxRelay(jdbc, kafka, manager);
+
+        relay.publish();
+
+        verify(jdbc, never()).update(anyString(), eq("event-1"));
+        verify(jdbc, never()).queryForList(anyString(), eq("event-2"));
+        assertThat(manager.rollbacks).isEqualTo(1);
+        assertThat(manager.commits).isZero();
+
+        relay.publish();
+
+        verify(kafka, times(2))
+                .send(
+                        eq("match.withdrawal-cleaned.v1"),
+                        eq("2"),
+                        eq((String) first.get("payload")));
+        verify(jdbc).update(contains("published_at=CURRENT_TIMESTAMP"), eq("event-1"));
+        verify(jdbc).update(contains("published_at=CURRENT_TIMESTAMP"), eq("event-2"));
+        assertThat(manager.commits).isEqualTo(2);
+    }
 }

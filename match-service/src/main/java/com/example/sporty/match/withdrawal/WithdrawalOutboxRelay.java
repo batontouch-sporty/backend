@@ -48,8 +48,8 @@ public class WithdrawalOutboxRelay {
                                 var rows =
                                         jdbc.queryForList(
                                                 "SELECT aggregate_id,event_type,payload FROM"
-                                                    + " outbox_event WHERE event_id=? AND"
-                                                    + " published_at IS NULL FOR UPDATE",
+                                                        + " outbox_event WHERE event_id=? AND"
+                                                        + " published_at IS NULL FOR UPDATE",
                                                 id);
                                 if (rows.isEmpty()) return;
                                 var row = rows.get(0);
@@ -74,7 +74,7 @@ public class WithdrawalOutboxRelay {
                     // Keep this row pending, but do not hold up another member's Saga result.
                     LoggerFactory.getLogger(getClass())
                             .warn("Saga Outbox row retry required: {}", id, ex);
-                    if (Thread.currentThread().isInterrupted()) {
+                    if (Thread.currentThread().isInterrupted() || isPublishTimeout(ex)) {
                         return;
                     }
                 }
@@ -82,5 +82,16 @@ public class WithdrawalOutboxRelay {
         } catch (RuntimeException ex) {
             LoggerFactory.getLogger(getClass()).warn("Saga Outbox retry required", ex);
         }
+    }
+
+    /** A broker/ACK timeout should not consume the same wait for every pending row. */
+    private static boolean isPublishTimeout(Throwable failure) {
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (cause instanceof java.util.concurrent.TimeoutException
+                    || cause instanceof org.apache.kafka.common.errors.TimeoutException) {
+                return true;
+            }
+        }
+        return false;
     }
 }

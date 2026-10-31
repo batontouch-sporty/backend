@@ -38,3 +38,7 @@ MariaDB 실행 시도는 Docker 데몬이 실행되지 않아 진행하지 못�
 - Kafka 실제 브로커 통합은 이 분리본에서 미검증. Outbox 발행 순서/실패는 KafkaTemplate 모의 검증
 - 원래 작업 폴더의 35개 통합 테스트 결과를 이 분리본 검증으로 혼용하지 않는다
 - 별도 브랜치 feat/34/match-withdrawal-saga, 원본 작업은 ../backend에 그대로 보존
+
+## 실제 환경 검증 추가
+
+Docker 기동 후 MariaDB 12개 테스트와 실제 Kafka 송수신·중복·DLT·장애 복구 검증을 완료했다. 위의 Docker 미실행/Kafka 모의 검증 한계는 초기 기록이며, 최신 결과는 [verification.md](verification.md)를 기준으로 한다. 실제 회원·알림 서비스와 팀 전체 Compose 연동은 여전히 별도다.

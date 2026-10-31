@@ -23,8 +23,11 @@ Refs #34
 
 ## 테스트 결과
 
-- 최종 검증 결과는 SAGA-PR.md 참고
-- MariaDB 실제 연동은 Docker 데몬 중지로 미실행
+- 단위 및 실제 MariaDB 기반 테스트 12개 통과, 빌드 통과
+- DML-only match_app + 실제 Kafka 요청/결과/중복/3회 재시도 후 DLT 검증
+- Kafka 중단·복구 후 Outbox 자동 발행 및 이벤트 ID 유지 확인
+- 실제 회원·알림 서비스와의 통합은 미검증
+- 상세 환경 및 한계는 verification.md 참고 (broker 4.3.1, 팀 Compose broker 3.9.1과 버전 차이)
 - Gateway 경유 호출은 이번 Saga 이벤트 작업의 검증 대상이 아님
 
 ## 리뷰 요청사항

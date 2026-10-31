@@ -24,4 +24,4 @@ docker compose up -d --build --wait         # 전체
 docker compose up -d mariadb redis kafka    # 인프라만
 ```
 
-외부 공개 포트는 Gateway 8000뿐입니다. 기동 직후 약 1분는 Gateway가 503을 줄 수 있습니다.
+외부 공개 포트는 Gateway 8000뿐입니다. 기동 직후 약 1분은 Gateway가 503을 줄 수 있습니다.

@@ -20,8 +20,9 @@ AI 기반 생활체육 매칭 플랫폼 Sporty_v2의 백엔드 저장소입니�
 
 ```bash
 cp .env.example .env
+openssl rand -base64 48                     # 결과를 .env의 JWT_SECRET_KEY에 넣는다
 docker compose up -d --build --wait         # 전체
 docker compose up -d mariadb redis kafka    # 인프라만
 ```
 
-외부 공개 포트는 Gateway 8000뿐입니다. 기동 직후 약 1분은 Gateway가 503을 줄 수 있습니다.
+호스트에 열리는 앱 포트는 Gateway 8000뿐이고 127.0.0.1에만 바인딩합니다. 기동 직후 약 1분은 Gateway가 503을 줄 수 있습니다.

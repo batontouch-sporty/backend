@@ -26,3 +26,20 @@ docker compose up -d mariadb redis kafka    # 인프라만
 ```
 
 호스트에 열리는 앱 포트는 Gateway 8000뿐이고 127.0.0.1에만 바인딩합니다. 기동 직후 약 1분은 Gateway가 503을 줄 수 있습니다.
+
+## Zipkin 로컬 실행
+
+처음 실행할 때는 예시 파일을 복사해 로컬 환경변수 파일을 준비합니다. 기존 `.env`가 있다면 덮어쓰지 말고 `ZIPKIN_HOST_PORT=9411`만 추가합니다. `JWT_SECRET_KEY`가 비어 있으면 `openssl rand -base64 48`의 출력값을 직접 넣습니다. `.env`는 Git에 커밋하지 않습니다.
+
+```bash
+cp -n .env.example .env
+docker compose config --quiet
+docker compose up -d --wait zipkin
+docker compose ps zipkin
+curl -L --fail --silent --show-error --output /dev/null \
+  --write-out 'HTTP %{http_code}\n' http://localhost:9411
+```
+
+Zipkin UI의 기본 접속 주소는 [http://localhost:9411](http://localhost:9411)입니다. 호스트의 9411 포트를 이미 사용 중이라면 `.env`에서 `ZIPKIN_HOST_PORT`를 사용 가능한 포트로 변경하고, 변경한 포트로 접속합니다.
+
+현재 Zipkin은 메모리 저장 방식이므로 컨테이너를 재시작하면 추적 기록이 사라집니다. 이번 구성은 Zipkin 실행 환경만 추가하며, 실제 서비스와 추적 데이터는 후속 Spring 서비스 연동 후 확인할 수 있습니다.

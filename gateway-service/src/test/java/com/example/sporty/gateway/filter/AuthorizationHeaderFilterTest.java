@@ -68,15 +68,13 @@ class AuthorizationHeaderFilterTest {
             "GET, /match-service/api/matches/%6de",
             "GET, /match-service/api/matches/%256de",
             "GET, /match-service/api/matches/me;v=1",
-            "GET, /match-service/api/matches/1/../me",
-            "GET, /match-service/api/matches/1/%2e%2e/me",
-            "GET, /match-service/api/matches/1/%252e%252e/me",
-            "GET, /match-service/api/matches/1/..;/me",
-            "GET, /match-service/api/matches/me/%252e%252e/1",
+            "GET, /match-service/api/matches/1;v=1",
+            "GET, /match-service/api/matches/1/",
+            "GET, /match-service/api/matches/1/.",
+            "GET, /match-service/api/matches/./1",
             "GET, /match-service/api/matches/1/participants",
             "GET, /MATCH-SERVICE/api/matches",
             "GET, /match-service/API/MATCHES",
-            "GET, /user-service/../match-service/api/matches",
             "GET, /user-service/actuator/env"
     })
     void privateRequests(String method, String path) {
@@ -95,11 +93,8 @@ class AuthorizationHeaderFilterTest {
             "/user-service/api/admin;v=1/users",
             "/user-service/api%2Fadmin/users",
             "/user-service/api%5Cadmin/users",
-            "/user-service/api/x/../admin/users",
             "/user-service/api/./admin/users",
-            "/user-service/../api/admin/users",
-            "/user-service/api/admin/%0Ausers",
-            "/match-service/api/matches/%2e%2e/admin/users"
+            "/user-service/api/admin/%0Ausers"
     })
     void adminPaths(String path) {
         assertThat(AuthorizationHeaderFilter.isAdmin(path)).isTrue();
@@ -114,6 +109,36 @@ class AuthorizationHeaderFilterTest {
     })
     void notAdminPaths(String path) {
         assertThat(AuthorizationHeaderFilter.isAdmin(path)).isFalse();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "/match-service/api/matches/1/../me",
+            "/match-service/api/matches/1/%2e%2e/me",
+            "/match-service/api/matches/1/%252e%252e/me",
+            "/match-service/api/matches/1/.%2E/me",
+            "/match-service/api/matches/1/..;/me",
+            "/match-service/api/matches/1/..;x=1/me",
+            "/match-service/api/matches/1/%2e%2e%3Bx/me",
+            "/match-service/api/matches/1%2F..%2Fme",
+            "/match-service/api/matches/1%5C..%5Cme",
+            "/user-service/../match-service/api/matches",
+            "/user-service/.."
+    })
+    void parentSegmentPaths(String path) {
+        assertThat(AuthorizationHeaderFilter.hasParentSegment(path)).isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "/match-service/api/matches",
+            "/match-service/api/matches/./1",
+            "/user-service/api/users/a..b",
+            "/user-service/api/users/...",
+            "/user-service/api/search/100%25off"
+    })
+    void noParentSegmentPaths(String path) {
+        assertThat(AuthorizationHeaderFilter.hasParentSegment(path)).isFalse();
     }
 
     @Test

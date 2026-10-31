@@ -1,11 +1,11 @@
 package com.example.sporty.gateway.filter;
 
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Deque;
 import java.util.List;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
@@ -68,21 +68,24 @@ public class AuthorizationHeaderFilter implements GlobalFilter, Ordered {
         String rawPath = request.getURI().getRawPath();
         String authorization = request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
 
+        if (hasParentSegment(rawPath)) {
+            return reject(exchange, HttpStatus.BAD_REQUEST, "INVALID_PATH", "잘못된 경로입니다.");
+        }
         if (isTokenIgnored(request.getMethod(), rawPath)) {
             return forward(exchange, chain, null);
         }
         if (authorization == null) {
             return isPublic(request.getMethod(), rawPath)
                     ? forward(exchange, chain, null)
-                    : reject(exchange, HttpStatus.UNAUTHORIZED, "인증이 필요합니다.");
+                    : reject(exchange, HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "인증이 필요합니다.");
         }
 
         LoginUser user = authenticate(authorization);
         if (user == null) {
-            return reject(exchange, HttpStatus.UNAUTHORIZED, "인증이 필요합니다.");
+            return reject(exchange, HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "인증이 필요합니다.");
         }
         if (isAdmin(rawPath) && !"ADMIN".equals(user.role())) {
-            return reject(exchange, HttpStatus.FORBIDDEN, "권한이 없습니다.");
+            return reject(exchange, HttpStatus.FORBIDDEN, "FORBIDDEN", "권한이 없습니다.");
         }
         return forward(exchange, chain, user);
     }
@@ -118,11 +121,11 @@ public class AuthorizationHeaderFilter implements GlobalFilter, Ordered {
         return chain.filter(exchange.mutate().request(request).build());
     }
 
-    private Mono<Void> reject(ServerWebExchange exchange, HttpStatus status, String message) {
+    private Mono<Void> reject(ServerWebExchange exchange, HttpStatus status, String code, String message) {
         ServerHttpResponse response = exchange.getResponse();
         response.setStatusCode(status);
         response.getHeaders().setContentType(MediaType.APPLICATION_JSON);
-        byte[] body = String.format("{\"code\":\"%s\",\"message\":\"%s\"}", status.name(), message)
+        byte[] body = String.format("{\"code\":\"%s\",\"message\":\"%s\"}", code, message)
                 .getBytes(StandardCharsets.UTF_8);
         return response.writeWith(Mono.just(response.bufferFactory().wrap(body)));
     }
@@ -143,7 +146,22 @@ public class AuthorizationHeaderFilter implements GlobalFilter, Ordered {
     }
 
     static boolean isAdmin(String rawPath) {
-        return decodedPaths(rawPath).stream().anyMatch(path -> ADMIN_PATH.matcher(path).matches());
+        return decodedPaths(rawPath).stream()
+                .map(path -> segments(path)
+                        .filter(segment -> !segment.isEmpty() && !segment.equals("."))
+                        .collect(Collectors.joining("/", "/", "")))
+                .anyMatch(path -> ADMIN_PATH.matcher(path).matches());
+    }
+
+    // 뒤 서비스마다 ..를 푸는 방식이 달라 경로를 풀어서 판정하지 않고 거부한다.
+    static boolean hasParentSegment(String rawPath) {
+        return decodedPaths(rawPath).stream()
+                .flatMap(AuthorizationHeaderFilter::segments)
+                .anyMatch(".."::equals);
+    }
+
+    private static Stream<String> segments(String path) {
+        return SEPARATOR.splitAsStream(path).map(segment -> segment.split(";", 2)[0]);
     }
 
     // InternalPathBlockFilter와 같은 이유로 최대 3번까지 디코딩하고, 단계별 경로를 모두 돌려준다.
@@ -156,25 +174,9 @@ public class AuthorizationHeaderFilter implements GlobalFilter, Ordered {
             } catch (IllegalArgumentException e) {
                 break;
             }
-            paths.add(normalize(path));
+            paths.add(path);
         }
         return paths;
-    }
-
-    // 뒤 서비스가 경로를 정리하는 방식에 맞춘다. 첫 세그먼트는 라우트를 고르므로 ..로 지우지 않는다.
-    private static String normalize(String path) {
-        Deque<String> segments = new ArrayDeque<>();
-        for (String part : SEPARATOR.split(path)) {
-            String segment = part.split(";", 2)[0];
-            if (segment.equals("..")) {
-                if (segments.size() > 1) {
-                    segments.removeLast();
-                }
-            } else if (!segment.isEmpty() && !segment.equals(".")) {
-                segments.addLast(segment);
-            }
-        }
-        return "/" + String.join("/", segments);
     }
 
     // RewritePath(순서 1)가 경로를 바꾸기 전에 서비스 경로로 판정해야 한다.

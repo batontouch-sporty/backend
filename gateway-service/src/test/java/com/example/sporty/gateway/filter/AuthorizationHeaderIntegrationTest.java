@@ -7,6 +7,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.Key;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 
@@ -145,7 +146,6 @@ class AuthorizationHeaderIntegrationTest {
         expectUnauthorized(HttpMethod.GET, "/match-service/api/matches/me", null);
         expectUnauthorized(HttpMethod.POST, "/match-service/api/matches", null);
         expectUnauthorized(HttpMethod.GET, "/match-service/api/matches/%6de", null);
-        expectUnauthorized(HttpMethod.GET, "/match-service/api/matches/1/%2e%2e/me", null);
         expectUnauthorized(HttpMethod.GET, "/match-service/api/matches//me", null);
         expectUnauthorized(HttpMethod.GET, "/match-service/API/MATCHES", null);
     }
@@ -199,9 +199,7 @@ class AuthorizationHeaderIntegrationTest {
                 "/user-service/api/admin/users",
                 "/user-service/api/ADMIN/users",
                 "/user-service/api/%61dmin/users",
-                "/user-service//api/admin/users",
-                "/user-service/api/x/../admin/users",
-                "/match-service/api/matches/%2e%2e/admin/users")) {
+                "/user-service//api/admin/users")) {
             request(HttpMethod.GET, path, user).exchange()
                     .expectStatus().isForbidden()
                     .expectHeader().doesNotExist("Seen-Path")
@@ -218,6 +216,26 @@ class AuthorizationHeaderIntegrationTest {
                 .expectStatus().isOk()
                 .expectHeader().valueEquals("Seen-Path", "/api/admin/users")
                 .expectHeader().valueEquals("Seen-User-Role", "ADMIN");
+    }
+
+    @Test
+    void parentSegmentPathsAreRejectedBeforeAuthentication() {
+        String admin = accessToken("1", "ADMIN");
+        for (String path : List.of(
+                "/match-service/api/matches/1/../me",
+                "/match-service/api/matches/1/%2e%2e/me",
+                "/match-service/api/matches/1/..;x=1/me",
+                "/user-service/api/auth/login/../logout",
+                "/user-service/api/x/../admin/users")) {
+            for (String token : Arrays.asList(null, admin)) {
+                request(HttpMethod.POST, path, token).exchange()
+                        .expectStatus().isBadRequest()
+                        .expectHeader().doesNotExist("Seen-Path")
+                        .expectBody()
+                        .jsonPath("$.code").isEqualTo("INVALID_PATH")
+                        .jsonPath("$.message").isNotEmpty();
+            }
+        }
     }
 
     @Test

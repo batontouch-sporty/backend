@@ -36,8 +36,9 @@ cp -n .env.example .env
 docker compose config --quiet
 docker compose up -d --wait zipkin
 docker compose ps zipkin
+ZIPKIN_ADDRESS="$(docker compose port zipkin 9411)"
 curl -L --fail --silent --show-error --output /dev/null \
-  --write-out 'HTTP %{http_code}\n' http://localhost:9411
+  --write-out 'HTTP %{http_code}\n' "http://${ZIPKIN_ADDRESS}/"
 ```
 
 Zipkin UI의 기본 접속 주소는 [http://localhost:9411](http://localhost:9411)입니다. 호스트의 9411 포트를 이미 사용 중이라면 `.env`에서 `ZIPKIN_HOST_PORT`를 사용 가능한 포트로 변경하고, 변경한 포트로 접속합니다.

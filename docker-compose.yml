@@ -140,5 +140,12 @@ services:
       timeout: 10s
       retries: 20
 
+  zipkin:
+    image: openzipkin/zipkin:3.6.1
+    environment:
+      STORAGE_TYPE: mem
+    ports:
+      - "127.0.0.1:${ZIPKIN_HOST_PORT:-9411}:9411"
+
 volumes:
   mariadb-data:

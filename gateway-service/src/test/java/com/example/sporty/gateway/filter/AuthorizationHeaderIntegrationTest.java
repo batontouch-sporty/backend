@@ -41,6 +41,7 @@ class AuthorizationHeaderIntegrationTest {
     private static final String OTHER_SECRET = "test-only-other-jwt-secret-key-at-least-32-bytes";
     private static final String USER_ID = "X-User-Id";
     private static final String USER_ROLE = "X-User-Role";
+    private static final String ORIGIN = "http://localhost:3000";
 
     private static HttpServer downstream;
 
@@ -246,6 +247,60 @@ class AuthorizationHeaderIntegrationTest {
                 .expectBody()
                 .jsonPath("$.code").isEqualTo("FORBIDDEN")
                 .jsonPath("$.message").isEqualTo("권한이 없습니다.");
+    }
+
+    @Test
+    void preflightPassesWithoutTokenAndStopsAtGateway() {
+        for (String path : List.of("/match-service/api/matches/me", "/user-service/api/admin/stats")) {
+            preflight(path, ORIGIN).exchange()
+                    .expectStatus().isOk()
+                    .expectHeader().valueEquals(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, ORIGIN)
+                    .expectHeader().valueEquals(HttpHeaders.ACCESS_CONTROL_ALLOW_METHODS,
+                            "GET,POST,PUT,PATCH,DELETE,OPTIONS")
+                    .expectHeader().valueEquals(HttpHeaders.ACCESS_CONTROL_ALLOW_HEADERS,
+                            "Authorization, Content-Type")
+                    .expectHeader().doesNotExist(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS)
+                    .expectHeader().doesNotExist("Seen-Path");
+        }
+    }
+
+    @Test
+    void preflightFromOtherOriginIsRejected() {
+        preflight("/match-service/api/matches", "http://evil.example").exchange()
+                .expectStatus().isForbidden()
+                .expectHeader().doesNotExist(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN)
+                .expectHeader().doesNotExist("Seen-Path");
+    }
+
+    @Test
+    void authenticationRejectionsCarryCorsHeaders() {
+        request(HttpMethod.GET, "/match-service/api/matches/me", null)
+                .header(HttpHeaders.ORIGIN, ORIGIN)
+                .exchange()
+                .expectStatus().isUnauthorized()
+                .expectHeader().valueEquals(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, ORIGIN);
+        request(HttpMethod.GET, "/user-service/api/admin/stats", accessToken("7", "USER"))
+                .header(HttpHeaders.ORIGIN, ORIGIN)
+                .exchange()
+                .expectStatus().isForbidden()
+                .expectHeader().valueEquals(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, ORIGIN);
+    }
+
+    @Test
+    void forwardedResponseCarriesCorsHeaders() {
+        request(HttpMethod.GET, "/match-service/api/matches", null)
+                .header(HttpHeaders.ORIGIN, ORIGIN)
+                .exchange()
+                .expectStatus().isOk()
+                .expectHeader().valueEquals("Seen-Path", "/api/matches")
+                .expectHeader().valueEquals(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, ORIGIN);
+    }
+
+    private WebTestClient.RequestHeadersSpec<?> preflight(String path, String origin) {
+        return request(HttpMethod.OPTIONS, path, null)
+                .header(HttpHeaders.ORIGIN, origin)
+                .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "PATCH")
+                .header(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS, "Authorization, Content-Type");
     }
 
     private void expectUnauthorized(HttpMethod method, String path, String token) {

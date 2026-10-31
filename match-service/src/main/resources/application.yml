@@ -4,6 +4,18 @@ server:
 spring:
   application:
     name: match-service
+  cloud:
+    openfeign:
+      circuitbreaker:
+        enabled: true
+      client:
+        config:
+          matchMemberClient:
+            connectTimeout: ${MATCH_USER_CONNECT_TIMEOUT_MS:1000}
+            readTimeout: ${MATCH_USER_READ_TIMEOUT_MS:2000}
+          matchFacilityClient:
+            connectTimeout: ${MATCH_FACILITY_CONNECT_TIMEOUT_MS:1000}
+            readTimeout: ${MATCH_FACILITY_READ_TIMEOUT_MS:2000}
   config:
     import: optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}
 
@@ -22,3 +34,24 @@ management:
         include:
           - health
           - info
+
+match:
+  clients:
+    user:
+      url: ${MATCH_USER_SERVICE_URL:}
+    facility:
+      url: ${MATCH_FACILITY_SERVICE_URL:}
+
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10s
+        permittedNumberOfCallsInHalfOpenState: 2
+  timelimiter:
+    configs:
+      default:
+        timeoutDuration: 3s

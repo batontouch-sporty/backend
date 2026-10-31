@@ -197,4 +197,37 @@ class FacilityApiTest {
         assertThat(synced.getStartTime()).isEqualTo(LocalTime.of(7, 0));
         assertThat(services.findByServiceId("S0001").orElseThrow().isActive()).isFalse();
     }
+
+    @Test
+    void 필수_필드가_빠진_기존_시설은_비활성화하지_않는다() throws Exception {
+        // 리뷰 반영: 기존 활성 S0001이 응답에 있지만 PLACENM만 빠진 경우
+        Row incomplete = json.readValue("""
+                {"SVCID":"S0001","MINCLASSNM":"농구장","SVCNM":"잠실 실내체육관 농구장",
+                 "AREANM":"송파구","SVCSTATNM":"접수중"}
+                """, Row.class);
+        when(apiClient.isConfigured()).thenReturn(true);
+        when(apiClient.fetchAll()).thenReturn(List.of(incomplete));
+
+        SyncResult result = syncService.syncAll();
+
+        assertThat(result.skippedCount()).isEqualTo(1);
+        assertThat(result.deactivatedCount()).isZero();
+        ServiceEntity kept = services.findByServiceId("S0001").orElseThrow();
+        assertThat(kept.isActive()).isTrue();
+        assertThat(kept.getName()).isEqualTo("잠실 실내체육관 농구장"); // 기존 값 보존
+    }
+
+    @Test
+    void SVCID가_빠진_행이_있으면_비활성화를_건너뛴다() throws Exception {
+        Row noId = json.readValue("""
+                {"MINCLASSNM":"농구장","SVCNM":"이름만 있는 시설","PLACENM":"어딘가","AREANM":"송파구"}
+                """, Row.class);
+        when(apiClient.isConfigured()).thenReturn(true);
+        when(apiClient.fetchAll()).thenReturn(List.of(noId));
+
+        SyncResult result = syncService.syncAll();
+
+        assertThat(result.deactivatedCount()).isZero();
+        assertThat(services.findByServiceId("S0001").orElseThrow().isActive()).isTrue();
+    }
 }

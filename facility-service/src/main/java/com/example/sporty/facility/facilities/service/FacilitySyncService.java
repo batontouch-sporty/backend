@@ -96,21 +96,35 @@ public class FacilitySyncService {
         int createdCount = 0;
         int updatedCount = 0;
         int skippedCount = 0;
+        boolean hasRowWithoutServiceId = false;
 
         for (Row row : rows) {
             String serviceId = trimToNull(row.getSvcId());
+
+            // SVCID가 없으면 어떤 시설인지 알 수 없다.
+            // 이 행이 기존 시설일 수도 있으므로 이번 동기화에서는 비활성화를 하지 않는다.
+            if (serviceId == null) {
+                skippedCount++;
+                hasRowWithoutServiceId = true;
+                log.warn("SVCID가 없는 서울시 체육시설 데이터를 제외합니다.");
+                continue;
+            }
+
+            // 다른 필드가 비어 있어도 응답에 포함된 시설이므로 먼저 수신 목록에 기록한다.
+            // 그래야 불완전한 행 때문에 기존 활성 시설이 사라진 시설로 판단되지 않는다.
+            seenServiceIds.add(serviceId);
+
             String serviceName = trimToNull(row.getSvcNm());
             String region = trimToNull(row.getAreaNm());
             String placeName = trimToNull(row.getPlaceNm());
             String facilityName = trimToNull(row.getMinClassNm());
 
-            if (serviceId == null
-                    || serviceName == null
+            if (serviceName == null
                     || region == null
                     || placeName == null
                     || facilityName == null) {
                 skippedCount++;
-                log.warn("필수값이 없는 서울시 체육시설 데이터를 제외합니다.");
+                log.warn("필수값이 없는 서울시 체육시설 데이터는 기존 값을 유지합니다: {}", serviceId);
                 continue;
             }
 
@@ -146,16 +160,18 @@ public class FacilitySyncService {
                 );
                 updatedCount++;
             }
-
-            seenServiceIds.add(serviceId);
         }
 
         int deactivatedCount = 0;
-        for (ServiceEntity service : serviceCache.values()) {
-            if (service.isActive()
-                    && !seenServiceIds.contains(service.getServiceId())) {
-                service.deactivate();
-                deactivatedCount++;
+        if (hasRowWithoutServiceId) {
+            log.warn("SVCID가 없는 행이 있어 이번 동기화에서는 시설 비활성화를 건너뜁니다.");
+        } else {
+            for (ServiceEntity service : serviceCache.values()) {
+                if (service.isActive()
+                        && !seenServiceIds.contains(service.getServiceId())) {
+                    service.deactivate();
+                    deactivatedCount++;
+                }
             }
         }
 

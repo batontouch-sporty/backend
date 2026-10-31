@@ -1,6 +1,89 @@
 name: sporty
 
+# 컨테이너 안에서는 호스트 포트가 아니라 내부 포트로 붙으므로 *_HOST_PORT를 고정한다.
+x-app-env: &app-env
+  SPRING_PROFILES_ACTIVE: dev
+  CONFIG_SERVER_URL: http://config-service:8888
+  EUREKA_URL: http://discovery-service:8761/eureka
+  MARIADB_HOST_PORT: 3306
+  REDIS_HOST: redis
+  REDIS_HOST_PORT: 6379
+  SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+
+x-app: &app
+  environment: *app-env
+  depends_on:
+    config-service:
+      condition: service_healthy
+
 services:
+  discovery-service:
+    <<: *app
+    build: {context: ., dockerfile: discovery-service/Dockerfile}
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+  config-service:
+    <<: *app
+    build: {context: ., dockerfile: config-service/Dockerfile}
+    depends_on:
+      discovery-service:
+        condition: service_healthy
+
+  gateway-service:
+    <<: *app
+    build: {context: ., dockerfile: gateway-service/Dockerfile}
+    environment:
+      <<: *app-env
+      JWT_SECRET_KEY: &jwt ${JWT_SECRET_KEY:?JWT_SECRET_KEY가 필요하다. .env.example을 본다}
+      # 값이 없으면 넘기지 않아 서비스 기본값을 쓴다. 비워서 넘기면 기본값이 무시된다.
+      CORS_ALLOWED_ORIGIN:
+      PROMETHEUS_URL:
+    ports:
+      - "${GATEWAY_HOST_PORT:-8000}:8000"
+
+  user-service:
+    <<: *app
+    build: {context: ., dockerfile: user-service/Dockerfile}
+    environment:
+      <<: *app-env
+      USER_DB_HOST: mariadb
+      USER_APP_PASSWORD: ${USER_APP_PASSWORD:?}
+      JWT_SECRET_KEY: *jwt
+
+  match-service:
+    <<: *app
+    build: {context: ., dockerfile: match-service/Dockerfile}
+    environment:
+      <<: *app-env
+      MATCH_DB_HOST: mariadb
+      MATCH_APP_PASSWORD: ${MATCH_APP_PASSWORD:?}
+
+  facility-service:
+    <<: *app
+    build: {context: ., dockerfile: facility-service/Dockerfile}
+    environment:
+      <<: *app-env
+      FACILITY_DB_HOST: mariadb
+      FACILITY_APP_PASSWORD: ${FACILITY_APP_PASSWORD:?}
+
+  ai-service:
+    <<: *app
+    build: {context: ., dockerfile: ai-service/Dockerfile}
+
+  notification-service:
+    <<: *app
+    build: {context: ., dockerfile: notification-service/Dockerfile}
+    environment:
+      <<: *app-env
+      NOTIFICATION_DB_HOST: mariadb
+      NOTIFICATION_APP_PASSWORD: ${NOTIFICATION_APP_PASSWORD:?}
+
   mariadb:
     image: mariadb:11.4
     environment:

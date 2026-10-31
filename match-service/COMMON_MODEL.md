@@ -24,9 +24,11 @@ enum은 match-service 안에 독립적으로 둔다. `MatchStatus`는 R7의 다�
   JOIN·EntityGraph는 옮기지 않는다.
 - 시작 후 수정과 정원 축소 제한은 서비스 계층에서 검사한다. 정원 변경 시 인원과
   `RECRUITING/CLOSED` 상태를 다시 계산한다.
-- 하드 삭제가 허용된 매치만 삭제한다. 먼저 `MatchParticipantRepository.deleteAllByMatch_Id`
-  후 `flush()`, 그다음 `MatchRepository.deleteHardById`를 호출한다. DB가 대기열 행을
-  CASCADE로 삭제한다. `CANCELLED` 소프트 취소는 매치·참가·대기 기록을 남긴다.
+- 하나의 `match_db` 트랜잭션에서 하드 삭제한다. 먼저 `MatchRepository.findByIdForUpdate`로
+  매치 행을 잠그고, 잠금 상태에서 방장 권한·시작 전·모집 상태 등 삭제 허용 조건을 확인한다.
+  이어서 `MatchParticipantRepository.deleteAllByMatch_Id` 후 `flush()`, 그다음
+  `MatchRepository.deleteHardById`를 호출한다. DB가 대기열 행을 CASCADE로 삭제한다.
+  `CANCELLED` 소프트 취소는 매치·참가·대기 기록을 남긴다.
 
 ## #11 참가·취소 담당
 

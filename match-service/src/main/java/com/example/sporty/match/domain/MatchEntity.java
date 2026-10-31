@@ -110,29 +110,50 @@ public class MatchEntity {
         copyFacility(facility);
     }
 
+    /** Close recruitment only while the match is still in a recruitment state. */
     public void closeRecruitment(LocalDateTime changedAt) {
+        requireOpenForRecruitmentChange();
         changeStatus(MatchStatus.CLOSED, changedAt);
     }
 
+    /** Reopen recruitment only while the match is still in a recruitment state. */
     public void reopenRecruitment(LocalDateTime changedAt) {
+        requireOpenForRecruitmentChange();
         changeStatus(MatchStatus.RECRUITING, changedAt);
     }
 
+    /** Keep terminal states terminal and require cancellation metadata for CANCELLED. */
     public void changeStatus(MatchStatus next, LocalDateTime changedAt) {
         Objects.requireNonNull(next);
+        Objects.requireNonNull(changedAt);
+        if (status == MatchStatus.CANCELLED || status == MatchStatus.COMPLETED) {
+            throw new IllegalStateException("Cannot change status from " + status);
+        }
         if (next == MatchStatus.CANCELLED && cancelledAt == null) {
             throw new IllegalStateException("Use cancel() to record cancelledAt");
         }
         status = next;
-        statusChangedAt = Objects.requireNonNull(changedAt);
+        statusChangedAt = changedAt;
     }
 
+    /** Record the reason and time once, after checking that cancellation is still allowed. */
     public void cancel(String reason, LocalDateTime changedAt) {
+        Objects.requireNonNull(changedAt);
+        if (status == MatchStatus.CANCELLED || status == MatchStatus.COMPLETED) {
+            throw new IllegalStateException("Cannot cancel match in status " + status);
+        }
         cancelReason = reason;
-        cancelledAt = Objects.requireNonNull(changedAt);
+        cancelledAt = changedAt;
         changeStatus(MatchStatus.CANCELLED, changedAt);
     }
 
+    private void requireOpenForRecruitmentChange() {
+        if (status != MatchStatus.RECRUITING && status != MatchStatus.CLOSED) {
+            throw new IllegalStateException("Cannot change recruitment in status " + status);
+        }
+    }
+
+    /** Enforce the same title, capacity and time invariants as the match_db DDL. */
     private void updateDetails(Details details) {
         Objects.requireNonNull(details);
         if (details.title() == null || details.title().isBlank()
@@ -151,6 +172,7 @@ public class MatchEntity {
         genderGroup = Objects.requireNonNull(details.genderGroup());
     }
 
+    /** Copy facility values without introducing a cross-service JPA relation. */
     private void copyFacility(FacilitySnapshot facility) {
         Objects.requireNonNull(facility);
         if (facility.id() <= 0) throw new IllegalArgumentException("facilityId must be positive");

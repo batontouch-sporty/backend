@@ -60,6 +60,7 @@ class MatchPersistenceTest {
         waitlist.saveAndFlush(new MatchWaitlistEntity(match, 8));
         participants.saveAndFlush(new MatchParticipantEntity(match, 9, MatchParticipantRole.OWNER));
 
+        assertThat(matches.findByIdForUpdate(match.getId())).isPresent();
         participants.deleteAllByMatch_Id(match.getId());
         participants.flush();
         assertThat(matches.deleteHardById(match.getId())).isEqualTo(1);

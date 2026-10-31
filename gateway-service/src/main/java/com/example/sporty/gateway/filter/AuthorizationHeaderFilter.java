@@ -50,7 +50,7 @@ public class AuthorizationHeaderFilter implements GlobalFilter, Ordered {
             "GET /[^/]+/(health-check|actuator/health)"));
 
     private static final Pattern ADMIN_PATH =
-            Pattern.compile("/[^/]+/api/admin(/.*)?", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+            Pattern.compile("(/prometheus|/[^/]+/api/admin)(/.*)?", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
 
     private static final Pattern SEPARATOR = Pattern.compile("[/\\\\]");
 

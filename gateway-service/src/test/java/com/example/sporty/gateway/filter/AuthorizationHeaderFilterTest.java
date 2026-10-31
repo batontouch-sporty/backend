@@ -94,7 +94,14 @@ class AuthorizationHeaderFilterTest {
             "/user-service/api%2Fadmin/users",
             "/user-service/api%5Cadmin/users",
             "/user-service/api/./admin/users",
-            "/user-service/api/admin/%0Ausers"
+            "/user-service/api/admin/%0Ausers",
+            "/prometheus",
+            "/prometheus/api/v1/query",
+            "/PROMETHEUS/api/v1/query",
+            "/%70rometheus/api/v1/query",
+            "/%2570rometheus/api/v1/query",
+            "//prometheus/api/v1/query",
+            "/prometheus;v=1/api/v1/query"
     })
     void adminPaths(String path) {
         assertThat(AuthorizationHeaderFilter.isAdmin(path)).isTrue();
@@ -105,7 +112,9 @@ class AuthorizationHeaderFilterTest {
             "/user-service/api/users",
             "/user-service/api/administrators",
             "/user-service/admin/users",
-            "/user-service/api/search/100%25off"
+            "/user-service/api/search/100%25off",
+            "/prometheus-data/api/v1/query",
+            "/user-service/prometheus"
     })
     void notAdminPaths(String path) {
         assertThat(AuthorizationHeaderFilter.isAdmin(path)).isFalse();

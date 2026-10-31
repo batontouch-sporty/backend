@@ -75,6 +75,8 @@ services:
       <<: *app-env
       FACILITY_DB_HOST: mariadb
       FACILITY_APP_PASSWORD: ${FACILITY_APP_PASSWORD:?}
+      # 비어 있어도 기동한다. 비면 서울시 시설 동기화만 건너뛴다.
+      PUBLIC_DATA_API_KEY: ${PUBLIC_DATA_API_KEY:-}
 
   ai-service:
     <<: *app

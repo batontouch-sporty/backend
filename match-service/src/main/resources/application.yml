@@ -4,6 +4,10 @@ server:
 spring:
   application:
     name: match-service
+  datasource:
+    url: jdbc:mariadb://${MATCH_DB_HOST:localhost}:${MARIADB_HOST_PORT:3306}/match_db
+    username: match_app
+    password: ${MATCH_APP_PASSWORD:}
   config:
     import: optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}
 
@@ -22,3 +26,8 @@ management:
         include:
           - health
           - info
+
+# Enable only after official R7 schema initialization. No CREATE/ALTER by the app.
+match:
+  withdrawal:
+    enabled: ${MATCH_WITHDRAWAL_ENABLED:false}

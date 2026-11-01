@@ -1,6 +1,6 @@
 # 매칭 CRUD 초안
 
-기준 main: `5de929a` (2026-11-01). 확정 API A9~A13·A16, 공식 R8 DDL과 공통 MatchEntity·Repository를 사용한다. 로컬 초안 브랜치 `feat/10/match-crud-draft`에 작성하며 바로 main에 반영하지 않는다.
+기준 main: `5de929a` (2026-11-01). 확정 API A9~A13·A16, 공식 R8 DDL과 공통 MatchEntity·Repository를 사용한다. PR #77의 `feat/10/match-crud-draft` 브랜치에서 검토하며 main에 직접 반영하지 않는다.
 
 ## 구현 범위
 
@@ -13,23 +13,27 @@
 
 ## 기존 작업과 연결
 
-기존 참가·취소·대기열·탈퇴 Saga 코드는 변경하지 않는다. 생성·수정·삭제는 `participationMemberLocks`를 쓰며 Saga와 같은 회원 잠금 이름을 공유한다. 생성의 회원 검사와 OWNER 저장이 한 트랜잭션에서 잠금으로 보호된다. 수정·삭제는 회원 잠금 후 공통 매치 행 잠금을 얻는다.
+생성·수정·삭제는 `participationMemberLocks`를 쓰며 Saga와 같은 회원 잠금 이름을 공유한다. 생성의 회원 검사와 OWNER 저장이 한 트랜잭션에서 잠금으로 보호된다. 수정·삭제는 회원 잠금 후 공통 매치 행 잠금을 얻는다. A13 삭제와 탈퇴 Saga의 데드락 재현 결과에 따라 `WithdrawalStore.lockMatches`도 매치 행을 ID 순서로 먼저 잠그고 참가 기록을 현재 읽기로 재확인한다.
 
-시설 검사에는 PR #47의 MatchFacilityIntegration을, 상세에는 MatchRemoteChecks.profiles를 사용한다. 생성·수정 실패는 동일 트랜잭션을 롤백한다. 수정의 시설 검사와 프로필 조회는 매치 행 잠금을 가진 상태에서 수행되므로 기존 Feign 타임아웃 동안 잠금이 유지될 수 있다.
+생성 시 시설 검사에는 PR #47의 MatchFacilityIntegration을, 상세에는 MatchRemoteChecks.profiles를 사용한다. 생성·수정 실패는 해당 저장 트랜잭션을 롤백한다. 수정은 시설 검사를 잠금 전에 끝내고, 매치 행 잠금 후 권한·상태·기간·정원·시설 ID를 재확인한다. 상세 응답의 회원 프로필 조회는 저장 트랜잭션을 커밋한 뒤 수행한다.
 
 DB 엔티티·DDL·권한·Compose·다른 서비스는 수정하지 않았다. 검색을 위해 MatchRepository에 JpaSpecificationExecutor를 추가하고, 입력 검증용 validation 의존성을 추가했다.
 
 ## 연결 및 후속 작업
 
-1. 공동 작업 시 컨트롤러·DTO·서비스 이름과 위치를 맞춰 하나의 구현으로 통합한다.
+1. 환우님과 탈퇴 Saga 담당자가 검색 의미와 `WithdrawalStore.lockMatches` 잠금 순서 변경을 검토한다.
 2. A17 방장 soft cancel, A29 관리자 통계, 시작·종료 스케줄러는 이번 CRUD 초안 밖이며 후속 연결이 필요하다.
 3. 시작 하루 전 알림 `match.starting-soon.v1`의 발행 및 모임당 한 번 처리도 별도 작업이다.
 4. 정원 증가 시 현재 확정 명세대로 RECRUITING으로 재계산한다. 기존 대기자를 정원 수정 순간에 자동 승급시키는 추가 정책은 구현하지 않았다. 현재 #35는 참가 취소·회원 탈퇴 시 승급한다.
 5. 생성 시 OWNER 자동 등록에는 joined 이벤트를 별도로 만들지 않는다. 정원 1로 CLOSED가 되는 경우에는 CLOSED 이벤트를 발행한다. 알림 정책 검토 시 이 동작을 확인한다.
-6. 초안 단계의 검증은 H2·MockMvc와 회원·시설 검사 Bean 대체 기반이다. 공식 MariaDB·실제 Gateway·시설·회원 서비스의 신규 CRUD 통합 검증은 합의 후 진행한다. #32 완료로 판정하지 않는다.
+6. H2·MockMvc 테스트와 별도로 격리된 Compose에서 MariaDB·Gateway·시설·회원 서비스 통합 호출을 검증했다. 다중 매치·여러 경합 타이밍까지 증명한 것은 아니므로 #32 완료로 판정하지 않는다.
 
 ## 테스트
 
 MatchCrudDraftTest에서 숫자 생성 응답, 회원 잠금 순서, 시설 스냅샷·OWNER 저장, 정원 1 마감 이벤트, 입력·검색 검증, 기본 상태 필터, 상세 프로필·플래그, 수정 상태 전이·권한·정원·시설 장애 롤백, terminal 상태 제한, 삭제 CASCADE, 내 매치 회원 재조회 없음, Outbox 실패 시 생성 롤백을 확인한다. 기존 매칭 전체 회귀 테스트와 bootJar도 실행한다.
 
 2026-11-01 실행 결과: `:match-service:test :match-service:bootJar` 성공. 총 115건 중 103건 성공, 별도 실서비스 실행 조건이 있는 12건 제외, 실패 0건. 신규 CRUD 테스트 11건을 포함한다. 실서비스 CRUD 통합 검증은 아직 수행하지 않았다.
+
+2026-11-02 검토 결과: A10의 제목·설명 대소문자 무시 및 지역 부분 검색을 회귀 테스트로 확인했다. A12 시설·프로필 원격 호출이 매치 행 잠금 중 실행되지 않도록 바꾸고 트랜잭션 경계 테스트를 추가했다. `:match-service:test :match-service:bootJar` 전체 실행이 성공했다.
+
+격리된 Compose(MariaDB 11.4)에서 Gateway 경유 A9 생성 201, A10 제목·설명·지역 검색 각 1건, A11 상세, A12 수정, A16 내 매치, A13 삭제 204를 확인했다. 실제 회원 탈퇴 API가 Kafka 이벤트를 발행하는 환경에서 A13 HTTP 삭제와 탈퇴 Saga를 병렬 실행했고, 두 번째 시도에서는 별도 DB 세션이 매치 행 잠금을 잠시 유지해 경합을 만들었다. 삭제 204, 탈퇴 접수 202, Saga CLEANED, 회원 WITHDRAWN, 최종 매치 0건을 확인했다. 기존 SQL 잠금 순서에서는 MariaDB 1213 데드락을 재현했고, 매치 행 우선 잠금으로 바꾼 뒤 같은 DB 경합에서는 재현되지 않았다. 테스트 컨테이너는 종료했으며 팀 DB는 사용하지 않았다.

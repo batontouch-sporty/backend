@@ -1,0 +1,33 @@
+# 테스트 전용. main의 application.yml 대신 이 파일을 읽는다.
+# DB는 H2 메모리(MariaDB 모드), 서울시 API는 각 테스트에서 목으로 바꿔 외부 호출 없이 돈다.
+spring:
+  application:
+    name: facility-service
+  cloud:
+    config:
+      enabled: false
+    discovery:
+      enabled: false
+  datasource:
+    url: jdbc:h2:mem:facility_db;MODE=MariaDB;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    open-in-view: false
+    properties:
+      hibernate:
+        # service는 H2 예약어가 아니지만 안전하게 감싼다.
+        auto_quote_keyword: true
+
+eureka:
+  client:
+    enabled: false
+
+facility:
+  openapi:
+    service-key: ""
+  sync:
+    on-startup: false

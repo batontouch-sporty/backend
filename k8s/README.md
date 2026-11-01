@@ -26,6 +26,7 @@ Discovery는 현재 애플리케이션 설정에서 포트 `8761`을 사용하�
 - Namespace: `sporty`
 - Deployment / Service: `discovery-service`
 - replicas: `1`
+- Deployment 업데이트 전략: `Recreate`
 - Service 유형: `ClusterIP`
 - 컨테이너 / Service 포트: `8761`
 - 같은 Namespace의 접속 주소: `http://discovery-service:8761`
@@ -34,6 +35,14 @@ Discovery는 현재 애플리케이션 설정에서 포트 `8761`을 사용하�
 - 준비 probe: `GET /actuator/health/readiness`
 
 사용자 정의 클러스터 도메인을 사용하면 전체 DNS 주소의 마지막 `cluster.local` 부분을 실제 클러스터 도메인에 맞춰야 한다.
+
+### 교체 전략과 가용성 제한
+
+현재 구성은 replicas가 1개인 단일 standalone Eureka 서버이며, Deployment 업데이트에는 `Recreate` 전략을 사용한다. 업데이트할 때 기존 Pod가 종료된 뒤 새 Pod가 생성되므로 교체 중 Discovery 서버에 접속할 수 없는 시간이 발생한다.
+
+Eureka의 등록 정보는 메모리에 보관되므로 새 서버가 시작된 뒤 클라이언트의 재등록과 레지스트리 캐시 갱신을 기다려야 한다. 기존 클라이언트 캐시로 일부 호출이 이어질 수 있지만 모든 호출의 연속성을 보장하지는 않는다. 따라서 Discovery Pod의 `Ready` 상태와 전체 서비스의 재등록·조회 복구를 별도로 확인해야 한다.
+
+`Recreate`는 레지스트리 보존이나 무중단 배포를 보장하지 않는다. 복구 시간은 애플리케이션 시작, probe, Eureka 등록 및 캐시 갱신 주기 등 실제 환경에 따라 달라지므로 30초와 같은 고정 시간으로 단정하지 않는다. 실제 교체 동작과 복구 과정은 아직 검증하지 않았으며 후속 배포 단계에서 확인한다.
 
 `startupProbe`는 최초 10초 뒤 5초 간격으로 최대 24회 실패를 허용한다. 즉 probe 요청 시간까지 고려하면 약 130초 동안 시작을 기다릴 수 있다. `startupProbe`가 성공할 때까지 `livenessProbe`와 `readinessProbe`의 실행은 보류된다. 이후 liveness는 10초, readiness는 5초 간격으로 검사하며 각 요청의 timeout은 3초이다. `startupProbe` 또는 `livenessProbe`가 설정된 연속 실패 기준에 도달하면 해당 컨테이너가 재시작된다. `readinessProbe`가 연속 3회 실패하면 Pod는 `Ready=false` 상태가 되어 Service의 일반 트래픽 대상에서 제외되지만, readiness 실패 자체가 컨테이너를 재시작시키지는 않는다.
 

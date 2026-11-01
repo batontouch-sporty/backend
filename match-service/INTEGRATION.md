@@ -25,4 +25,9 @@ I1 `GET /internal/users/{id}`, I2 `GET /internal/users?ids=1,2`, I3 `GET /intern
 
 시설 서버 중단 검증은 동일 서버를 중단한 뒤 `MATCH_LIVE_FACILITY=true`, `MATCH_LIVE_FACILITY_DOWN=true`를 설정하고 `:match-service:test --rerun-tasks --tests '*LiveFacilityContractTest.actualStoppedFacilityReturns503'`를 실행한다. 이때 기존 활성 시설 조회가 503 `FACILITY_SERVICE_UNAVAILABLE`로 바뀌는 것을 확인한다. 정상 조회 테스트와 중단 테스트는 순서대로 실행한다. 메모리 DB 테스트와 구분되며, 전체 팀 Compose/Eureka/Gateway 연결은 후속 API 연결 뒤 확인한다.
 
-회원 I1·I2 내부 API와 매칭 CRUD·참가 서비스의 호출부는 해당 담당 구현 후 연결해야 한다. 이슈 #32의 실제 회원 서비스 통합 완료 조건은 이 연결 뒤 확인한다.
+회원 I1·I2는 #44로 main에 추가됐다. 실제 회원 서비스를 전용 MariaDB에서 실행해 Feign 연결 테스트 6개를 통과했다. 매칭 CRUD·참가 API 호출부와 팀 Compose/Eureka/Gateway 통합은 후속 연결 뒤 확인한다.
+
+
+## 실제 회원 연결 테스트
+
+MATCH_LIVE_MEMBER=true로 LiveMemberContractTest를 실행한다. 전용 localhost:18181에서 실제 user-service를 실행하고 회원 ID 1(남성 ACTIVE), 2(여성 ACTIVE), 3(남성 WITHDRAWN), 4(남성 WITHDRAWING)를 준비한다. 프로필 닉네임은 ID 1이 Live active, ID 3이 Live history이고 ID 999는 비워 둔다. 테스트는 읽기 전용이다. 전용 테스트 DB를 사용하며 실행 시 --rerun-tasks로 외부 서버 상태 변경을 반영한다.

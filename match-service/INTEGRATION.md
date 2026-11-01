@@ -2,9 +2,9 @@
 
 `MatchRemoteChecks`는 회원·시설 API 호출과 실패 정책을 제공한다. `MatchFacilityIntegration`은 검증 결과를 공통 `MatchEntity`에 연결한다. 저장과 권한·정원·시작 시각 검사는 호출 서비스가 담당한다.
 
-- 생성: `MatchFacilityIntegration.create(userId, details, facilityId)`로 회원·시설을 확인한 엔티티를 받아 같은 업무 트랜잭션에서 저장한다. 방장 참가 행·정원 상태·이벤트는 생성 서비스에서 함께 처리한다.
+- 생성: 회원별 DB 잠금을 획득한 같은 업무 트랜잭션에서 `MatchFacilityIntegration.create(userId, details, facilityId)`로 회원·시설을 확인한 엔티티를 받아 저장한다. 탈퇴 Saga와 같은 회원 잠금 이름을 사용한다. 방장 참가 행·정원 상태·이벤트는 생성 서비스에서 함께 처리한다.
 - 수정: 매치 잠금과 방장 권한·수정 가능 상태·정원 검사를 마친 뒤 `MatchFacilityIntegration.update(match, details, facilityId)`를 호출한다. 검증 실패 시 기존 엔티티는 변경하지 않는다.
-- 참가: 매치 잠금 아래 `MatchRemoteChecks.checkParticipant(userId, match.getGenderGroup().name())`로 회원 자격을 확인한다. 회원별 잠금을 사용하는 참가/Saga의 잠금 순서도 통일한다.
+- 참가: 회원별 DB 잠금 → `MatchRemoteChecks.activeMember(userId)` → 매치 행 잠금 순서다. 조회한 회원의 성별은 `checkParticipantGender(member, genderGroup)`로 매치 잠금 아래에서 비교한다. 참가의 원격 회원 조회는 매치 행 잠금을 잡기 전에 마친다. #11에서 실제 호출부를 연결했으며 참가/Saga와 같은 회원 잠금 이름을 사용한다.
 - 상세: `profiles(userIds)` 결과를 참가자 응답에 연결한다. 조회 실패 또는 누락된 회원의 닉네임은 `알 수 없음`이다.
 
 ## 통신과 오류
@@ -26,6 +26,13 @@ I1 `GET /internal/users/{id}`, I2 `GET /internal/users?ids=1,2`, I3 `GET /intern
 시설 서버 중단 검증은 동일 서버를 중단한 뒤 `MATCH_LIVE_FACILITY=true`, `MATCH_LIVE_FACILITY_DOWN=true`를 설정하고 `:match-service:test --rerun-tasks --tests '*LiveFacilityContractTest.actualStoppedFacilityReturns503'`를 실행한다. 이때 기존 활성 시설 조회가 503 `FACILITY_SERVICE_UNAVAILABLE`로 바뀌는 것을 확인한다. 정상 조회 테스트와 중단 테스트는 순서대로 실행한다. 메모리 DB 테스트와 구분되며, 전체 팀 Compose/Eureka/Gateway 연결은 후속 API 연결 뒤 확인한다.
 
 회원 I1·I2는 #44로 main에 추가됐다. 실제 회원 서비스를 전용 MariaDB에서 실행해 Feign 연결 테스트 6개를 통과했다. 매칭 CRUD·참가 API 호출부와 팀 Compose/Eureka/Gateway 통합은 후속 연결 뒤 확인한다.
+
+## 최신 연결 상태 (2026-11-01)
+
+- #11(PR #59)로 A14·A15 참가 API와 회원 I1 검사를 연결했다. 실제 Gateway·Eureka·회원 서비스·MariaDB를 사용한 동시 참가, 활동 상태·성별 제한 검증을 완료했다.
+- #35(PR #65)로 대기 등록과 자동 승급의 회원 I1 검사를 연결했다. 공식 R8 DDL·DML 앱 계정·validate 환경에서 일반 참가 취소 및 실제 회원 탈퇴 Saga의 승급을 확인했다.
+- 최신 main `0fe038b` 기준 생성·목록·상세·수정·삭제·내 매치의 CRUD 컨트롤러·업무 서비스는 아직 없다. #10의 이슈 종료 상태와 구분하여, 실제 코드가 추가된 뒤 생성·수정의 시설 검증·스냅샷 저장과 상세의 I2 프로필 연결을 확인해야 한다.
+- #32의 생성·수정·상세에 대한 Gateway 통합 검증은 위 호출부가 들어온 후 수행한다. 공통 Feign 도우미 테스트 통과만으로 해당 API 연결 완료를 판정하지 않는다.
 
 
 ## 실제 회원 연결 테스트

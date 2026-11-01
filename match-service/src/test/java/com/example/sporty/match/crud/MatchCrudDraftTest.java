@@ -222,6 +222,37 @@ class MatchCrudDraftTest {
     }
 
     @Test
+    void searchLimitsRowsInTheDatabaseWhileKeepingTheArrayResponse() throws Exception {
+        var snapshot =
+                new MatchEntity.FacilitySnapshot(
+                        12L, "Court", "Location", "송파구", true, "https://example.org/book");
+        var rows = new ArrayList<MatchEntity>();
+        for (int i = 0; i <= 500; i++) {
+            var begins = start.plusMinutes(i);
+            rows.add(
+                    new MatchEntity(
+                            new MatchEntity.Details(
+                                    "Match " + i,
+                                    "Description",
+                                    begins,
+                                    begins.plusHours(1),
+                                    3,
+                                    SkillLevel.BEGINNER,
+                                    SportType.TENNIS,
+                                    GenderGroup.MIXED),
+                            snapshot));
+        }
+        matches.saveAllAndFlush(rows);
+
+        assertThat(matches.count()).isEqualTo(501);
+        mvc.perform(get("/api/matches"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(500))
+                .andExpect(jsonPath("$[0].title").value("Match 0"))
+                .andExpect(jsonPath("$[499].title").value("Match 499"));
+    }
+
+    @Test
     void detailMapsProfilesFlagsAndSnapshotWithoutFacilityLookup() throws Exception {
         Long id = service.create(1L, request(3));
         participant(id, 2L);

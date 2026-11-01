@@ -11,6 +11,7 @@ import jakarta.persistence.criteria.Predicate;
 
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,6 +26,7 @@ import java.util.stream.Collectors;
 @Service
 @Transactional(readOnly = true)
 public class MatchCrudService {
+    private static final int MAX_SEARCH_RESULTS = 500;
     private final MatchRepository matches;
     private final MatchParticipantRepository participants;
     private final MatchFacilityIntegration facility;
@@ -121,7 +123,11 @@ public class MatchCrudService {
                                                         MatchStatus.IN_PROGRESS));
                             return cb.and(filters.toArray(Predicate[]::new));
                         },
-                        Sort.by("startAt").ascending().and(Sort.by("id")));
+                        PageRequest.of(
+                                0,
+                                MAX_SEARCH_RESULTS,
+                                Sort.by("startAt").ascending().and(Sort.by("id"))))
+                        .getContent();
         var counts = counts(rows.stream().map(MatchEntity::getId).toList());
         return rows.stream()
                 .map(

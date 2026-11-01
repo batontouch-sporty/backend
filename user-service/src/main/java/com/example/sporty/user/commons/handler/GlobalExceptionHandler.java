@@ -1,5 +1,6 @@
 package com.example.sporty.user.commons.handler;
 
+import com.example.sporty.user.commons.exception.auth.ForbiddenException;
 import com.example.sporty.user.commons.exception.auth.InvalidRefreshTokenException;
 import com.example.sporty.user.commons.exception.auth.LoginFailException;
 import com.example.sporty.user.commons.exception.profiles.ProfileNotFoundException;
@@ -7,6 +8,7 @@ import com.example.sporty.user.commons.exception.users.DuplicateEmailException;
 import com.example.sporty.user.commons.exception.users.DuplicateNicknameException;
 import com.example.sporty.user.commons.exception.users.PasswordMismatchException;
 import com.example.sporty.user.commons.exception.users.UserNotFoundException;
+import com.example.sporty.user.commons.exception.users.WithdrawalInProgressException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -50,6 +52,16 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(UserNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleUserNotFound(UserNotFoundException e) {
         return error(HttpStatus.NOT_FOUND, "USER_NOT_FOUND", e.getMessage());
+    }
+
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<ErrorResponse> handleForbidden(ForbiddenException e) {
+        return error(HttpStatus.FORBIDDEN, "FORBIDDEN", e.getMessage());
+    }
+
+    @ExceptionHandler(WithdrawalInProgressException.class)
+    public ResponseEntity<ErrorResponse> handleWithdrawalInProgress(WithdrawalInProgressException e) {
+        return error(HttpStatus.CONFLICT, "WITHDRAWAL_IN_PROGRESS", e.getMessage());
     }
 
     @ExceptionHandler(PasswordMismatchException.class)

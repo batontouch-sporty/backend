@@ -4,6 +4,7 @@ import com.example.sporty.user.commons.config.AuthHeaders;
 import com.example.sporty.user.users.domain.dto.UserInfoResponseDto;
 import com.example.sporty.user.users.domain.dto.UserSignUpRequestDto;
 import com.example.sporty.user.users.domain.dto.WithdrawalRequestDto;
+import com.example.sporty.user.users.domain.dto.WithdrawalResponseDto;
 import com.example.sporty.user.users.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -38,15 +39,15 @@ public class UserController {
                 .body(userService.getMyInfo(userId));
     }
 
-    // [USR-04] 회원탈퇴
+    // [USR-04] 회원탈퇴 접수 → 202 {status: WITHDRAWING, sagaId}
     @DeleteMapping("/me")
-    public ResponseEntity<Void> withdrawal(
+    public ResponseEntity<WithdrawalResponseDto> withdrawal(
             @RequestHeader(AuthHeaders.USER_ID) Long userId,
             @RequestBody(required = false) WithdrawalRequestDto request) {
 
-        userService.withdrawal(userId, request == null ? null : request.getPassword());
-
-        return ResponseEntity.noContent().build();
+        return ResponseEntity
+                .status(HttpStatus.ACCEPTED)
+                .body(userService.withdrawal(userId, request == null ? null : request.getPassword()));
     }
 
 }

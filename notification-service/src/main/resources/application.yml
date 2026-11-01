@@ -23,6 +23,12 @@ spring:
     properties:
       hibernate:
         dialect: org.hibernate.dialect.MariaDBDialect
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:${KAFKA_HOST_PORT:9092}}
+    consumer:
+      group-id: notification-service
+      # 처음 붙을 때 이미 쌓여 있던 이벤트도 알림으로 만든다.
+      auto-offset-reset: earliest
 
 eureka:
   instance:

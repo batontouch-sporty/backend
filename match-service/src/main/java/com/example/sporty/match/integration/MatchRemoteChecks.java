@@ -1,6 +1,8 @@
 package com.example.sporty.match.integration;
 
 import feign.FeignException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import org.springframework.stereotype.Service;
 
@@ -10,6 +12,7 @@ import java.util.*;
 /** Match-side policies shared by create/modify/join. No other service's DB access. */
 @Service
 public class MatchRemoteChecks {
+    private static final Logger log = LoggerFactory.getLogger(MatchRemoteChecks.class);
     private final MemberClient members;
     private final FacilityClient facilities;
 
@@ -127,8 +130,8 @@ public class MatchRemoteChecks {
                                         row.profileId(),
                                         blank(row.nickname()) ? "알 수 없음" : row.nickname(),
                                         row.imageUrl()));
-        } catch (RuntimeException ignored) {
-            /* Browsing must survive a display-only dependency outage. */
+        } catch (RuntimeException ex) {
+            log.warn("회원 프로필 조회 실패로 대체 정보를 표시합니다. requestedCount={}", ids.size(), ex);
         }
         return Collections.unmodifiableMap(result);
     }

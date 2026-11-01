@@ -17,6 +17,10 @@ spring:
     hibernate:
       ddl-auto: create-drop
     open-in-view: false
+  # Kafka 구독은 브로커를 띄우는 테스트(MatchEventConsumerTest)에서만 켠다.
+  kafka:
+    listener:
+      auto-startup: false
 
 eureka:
   client:

@@ -2,7 +2,6 @@ package com.example.sporty.match.withdrawal;
 
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.StringDeserializer;
-import org.apache.kafka.common.serialization.StringSerializer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.*;
 import org.springframework.context.annotation.*;
@@ -20,26 +19,6 @@ public class WithdrawalKafkaConfiguration {
     static TopicPartition deadLetterDestination(
             org.apache.kafka.clients.consumer.ConsumerRecord<?, ?> record) {
         return new TopicPartition(record.topic() + ".DLT", -1);
-    }
-
-    @Bean
-    KafkaTemplate<String, String> withdrawalKafkaTemplate(
-            @Value("${spring.kafka.bootstrap-servers:localhost:9092}") String brokers) {
-        return new KafkaTemplate<>(
-                new DefaultKafkaProducerFactory<>(
-                        Map.of(
-                                "bootstrap.servers",
-                                brokers,
-                                "key.serializer",
-                                StringSerializer.class,
-                                "value.serializer",
-                                StringSerializer.class,
-                                "acks",
-                                "all",
-                                "enable.idempotence",
-                                true,
-                                "max.block.ms",
-                                1000L)));
     }
 
     @Bean

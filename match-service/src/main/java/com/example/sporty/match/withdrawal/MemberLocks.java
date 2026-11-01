@@ -31,9 +31,11 @@ public class MemberLocks {
             try (var statement = connection.prepareStatement("SELECT GET_LOCK(?, 3)")) {
                 statement.setString(1, name);
                 try (var result = statement.executeQuery()) {
-                    if (!result.next() || result.getInt(1) != 1) {
-                        throw new IllegalStateException("회원 작업 처리 중");
-                    }
+                    if (!result.next()) throw new IllegalStateException("회원 잠금 결과가 없습니다.");
+                    int acquired = result.getInt(1);
+                    if (result.wasNull()) throw new IllegalStateException("회원 잠금 획득에 실패했습니다.");
+                    if (acquired == 0) throw new MemberLockTimeoutException();
+                    if (acquired != 1) throw new IllegalStateException("회원 잠금 결과가 올바르지 않습니다.");
                 }
             }
             TransactionSynchronizationManager.registerSynchronization(

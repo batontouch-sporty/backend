@@ -23,4 +23,8 @@ public interface WithdrawalSagaRepository extends JpaRepository<WithdrawalSagaEn
     @Query("select s.sagaId from WithdrawalSagaEntity s where s.status = :status and s.deadlineAt < :before order by s.deadlineAt")
     List<String> findIdsByStatusAndDeadlineBefore(SagaStatus status, LocalDateTime before, Limit limit);
 
+    // [A28] 상태별 Saga 수 [status, count]
+    @Query("select s.status, count(s) from WithdrawalSagaEntity s group by s.status")
+    List<Object[]> countGroupByStatus();
+
 }

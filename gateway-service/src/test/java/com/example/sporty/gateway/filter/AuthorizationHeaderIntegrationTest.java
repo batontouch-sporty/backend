@@ -14,6 +14,7 @@ import java.util.List;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.server.LocalManagementPort;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -47,6 +48,9 @@ class AuthorizationHeaderIntegrationTest {
 
     @LocalServerPort
     private int port;
+
+    @LocalManagementPort
+    private int managementPort;
 
     @DynamicPropertySource
     static void routeToDownstream(DynamicPropertyRegistry registry) throws IOException {
@@ -373,6 +377,53 @@ class AuthorizationHeaderIntegrationTest {
                 .expectBody()
                 .jsonPath("$.code").isEqualTo("FORBIDDEN")
                 .jsonPath("$.message").isEqualTo("권한이 없습니다.");
+    }
+
+    @Test
+    void actuatorStopsAtGatewayExceptHealth() {
+        for (String path : List.of(
+                "/user-service/actuator/prometheus",
+                "/match-service/actuator/env",
+                "/user-service/actuator/health/liveness",
+                "/user-service//actuator/prometheus",
+                "/user-service/%61ctuator/prometheus",
+                "/user-service/%2561ctuator/prometheus",
+                "/user-service/actuator;v=1/prometheus",
+                "/user-service/actuator%2Fprometheus",
+                "/user-service/ACTUATOR/prometheus",
+                "/user-service/actuator/health;v=1",
+                "/user-service/actuator/health/../prometheus",
+                "/user-service/health-check/../actuator/prometheus")) {
+            for (String token : Arrays.asList(null, accessToken("1", "ADMIN"))) {
+                request(HttpMethod.GET, path, token).exchange()
+                        .expectStatus().isForbidden()
+                        .expectHeader().doesNotExist("Seen-Path")
+                        .expectBody()
+                        .jsonPath("$.code").isEqualTo("FORBIDDEN");
+            }
+        }
+    }
+
+    @Test
+    void serviceHealthStaysPublic() {
+        request(HttpMethod.GET, "/user-service/actuator/health", null).exchange()
+                .expectStatus().isOk()
+                .expectHeader().valueEquals("Seen-Path", "/actuator/health");
+    }
+
+    @Test
+    void gatewayActuatorIsNotOnPublicPort() {
+        for (String path : List.of("/actuator/health", "/actuator/prometheus")) {
+            request(HttpMethod.GET, path, accessToken("1", "ADMIN")).exchange()
+                    .expectStatus().isForbidden();
+        }
+    }
+
+    @Test
+    void gatewayActuatorIsOnManagementPort() {
+        WebTestClient.bindToServer().baseUrl("http://localhost:" + managementPort).build()
+                .get().uri("/actuator/health").exchange()
+                .expectStatus().isOk();
     }
 
     @Test

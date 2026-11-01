@@ -302,7 +302,7 @@
       ],
       "alert_rule_test": [
         {
-          "eval_time": "1m",
+          "eval_time": "2m",
           "alertname": "SportyKafkaConsumerLagHigh",
           "exp_alerts": [
             {
@@ -313,7 +313,7 @@
               },
               "exp_annotations": {
                 "summary": "Kafka 처리 지연",
-                "description": "Consumer Group의 해당 토픽 미처리 메시지(Lag) 합계가 100건을 초과했습니다.",
+                "description": "Consumer Group의 해당 토픽 미처리 메시지(Lag) 합계가 100건을 초과한 상태가 2분간 지속됐습니다.",
                 "action": "Consumer 실행 상태와 이벤트 처리 오류를 확인해주세요."
               }
             }
@@ -332,7 +332,7 @@
       ],
       "alert_rule_test": [
         {
-          "eval_time": "1m",
+          "eval_time": "3m",
           "alertname": "SportyKafkaConsumerLagHigh",
           "exp_alerts": []
         }
@@ -359,7 +359,7 @@
           "exp_alerts": []
         },
         {
-          "eval_time": "5m",
+          "eval_time": "3m",
           "alertname": "SportyKafkaConsumerLagHigh",
           "exp_alerts": []
         }
@@ -554,6 +554,110 @@
           "eval_time": "2m",
           "alertname": "SportyWithdrawalSagaLateCleaned",
           "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "Kafka remains pending before two minutes",
+      "interval": "15s",
+      "input_series": [
+        {
+          "series": "kafka_consumergroup_lag{consumergroup=\"fixture-group\",topic=\"fixture-topic\",partition=\"0\"}",
+          "values": "110x24"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "1m45s",
+          "alertname": "SportyKafkaConsumerLagHigh",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "Kafka brief lag spike never fires",
+      "interval": "15s",
+      "input_series": [
+        {
+          "series": "kafka_consumergroup_lag{consumergroup=\"fixture-group\",topic=\"fixture-topic\",partition=\"0\"}",
+          "values": "110x3 0x20"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "3m",
+          "alertname": "SportyKafkaConsumerLagHigh",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "Kafka lag recovery clears firing alert",
+      "interval": "15s",
+      "input_series": [
+        {
+          "series": "kafka_consumergroup_lag{consumergroup=\"fixture-group\",topic=\"fixture-topic\",partition=\"0\"}",
+          "values": "110x8 0x16"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "2m",
+          "alertname": "SportyKafkaConsumerLagHigh",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "consumergroup": "fixture-group",
+                "topic": "fixture-topic",
+                "severity": "warning"
+              },
+              "exp_annotations": {
+                "summary": "Kafka 처리 지연",
+                "description": "Consumer Group의 해당 토픽 미처리 메시지(Lag) 합계가 100건을 초과한 상태가 2분간 지속됐습니다.",
+                "action": "Consumer 실행 상태와 이벤트 처리 오류를 확인해주세요."
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "3m",
+          "alertname": "SportyKafkaConsumerLagHigh",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "Kafka interrupted lag restarts pending duration",
+      "interval": "15s",
+      "input_series": [
+        {
+          "series": "kafka_consumergroup_lag{consumergroup=\"fixture-group\",topic=\"fixture-topic\",partition=\"0\"}",
+          "values": "110x3 0 110x24"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "3m",
+          "alertname": "SportyKafkaConsumerLagHigh",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "4m",
+          "alertname": "SportyKafkaConsumerLagHigh",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "consumergroup": "fixture-group",
+                "topic": "fixture-topic",
+                "severity": "warning"
+              },
+              "exp_annotations": {
+                "summary": "Kafka 처리 지연",
+                "description": "Consumer Group의 해당 토픽 미처리 메시지(Lag) 합계가 100건을 초과한 상태가 2분간 지속됐습니다.",
+                "action": "Consumer 실행 상태와 이벤트 처리 오류를 확인해주세요."
+              }
+            }
+          ]
         }
       ]
     }

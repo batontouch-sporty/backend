@@ -4,7 +4,11 @@ Prometheus와 Grafana는 루트 `docker-compose.yml`로 서비스와 함께 실�
 
 ## 실행
 
-아래 명령은 **백엔드 저장소 루트에서 Windows PowerShell로** 실행합니다. `.env`에 `GRAFANA_ADMIN_PASSWORD`가 없으면 Grafana만 시작되지 않습니다.
+아래 명령은 **백엔드 저장소 루트에서 Windows PowerShell로** 실행합니다.
+먼저 `.env`의 `JWT_SECRET_KEY`에 32바이트 이상의 값을 설정해야 합니다.
+예: `openssl rand -base64 48`의 결과를 넣습니다. 기존 `.env`는 덮어쓰지 않습니다.
+Compose는 파일 전체를 해석하므로 `prometheus`, `alertmanager`만 실행하거나 설정을 검사해도 이 값이 없으면 실패합니다.
+`.env`에 `GRAFANA_ADMIN_PASSWORD`가 없으면 Grafana만 시작되지 않습니다.
 
 ```powershell
 docker compose run --rm --no-deps --entrypoint promtool prometheus check config /etc/prometheus/prometheus.yml

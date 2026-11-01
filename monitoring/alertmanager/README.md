@@ -10,7 +10,7 @@ Grafana의 임계값 선과 별개의 경보입니다.
 | SportyServiceDown | 지표 수집 실패가 1분 지속 |
 | SportyHigh5xxRate | 최근 5분 요청의 5xx 비율이 5% 초과, 2분 지속 |
 | SportyHighP95Latency | 최근 5분 요청 p95가 1초 초과, 2분 지속 |
-| SportyKafkaConsumerLagHigh | Consumer Group·토픽의 파티션 Lag 합계가 100 초과 |
+| SportyKafkaConsumerLagHigh | Consumer Group·토픽의 파티션 Lag 합계가 100 초과, 2분 지속 |
 | SportyWithdrawalSagaLateCleaned | 최근 5분 동안 늦은 CLEANED Counter가 증가 |
 
 Actuator 요청은 HTTP 비율과 지연 계산에서 제외합니다. 요청이 없거나 지표가 없으면
@@ -103,7 +103,7 @@ Discord에 도착하는지 확인할 때는 Alertmanager의 전송 성공 카운
 
 ## 검증 범위 (2026-11-01)
 
-- promtool 규칙 테스트 23개: 기존 4종 14개와 늦은 CLEANED 9개. 늦은 rejected 제외, 0 등록, 지표 누락, 5분 구간 만료, Counter 리셋, 복수 인스턴스 합산을 포함합니다.
+- promtool 규칙 테스트 27개: 기존 4종 18개와 늦은 CLEANED 9개. 늦은 rejected 제외, 0 등록, 지표 누락, 5분 구간 만료, Counter 리셋, 복수 인스턴스 합산과 Kafka의 2분 대기·일시적 적체·복구·대기시간 초기화를 포함합니다.
 - Prometheus 설정 및 규칙 5개, Alertmanager 설정을 검사했습니다. 루트 통합 후 웹후크 변수가 없는 환경의 정상 기동과 웹후크가 있는 환경의 로컬 발생·해제 전송을 재검증했습니다.
 - 경보 5종의 발생·해제 메시지 10개를 amtool로 오프라인 렌더링했습니다.
 - 격리된 Prometheus·Alertmanager와 가짜 지표 제공자·로컬 Discord 수신기로 전송 흐름을 검사했습니다. 전송 테스트에서만 집계 구간을 15초로 줄였고 실제 규칙은 5분입니다.
@@ -111,3 +111,5 @@ Discord에 도착하는지 확인할 때는 Alertmanager의 전송 성공 카운
 
 서비스와 함께 실행한 뒤에는 Prometheus `/targets`에서 user-service가 UP인지, `/rules`에서 경보 5종이 로딩되는지 확인합니다.
 실제 늦은 CLEANED 시나리오와 Discord 수신 화면은 통합 시연에서 추가 캡처해야 합니다.
+
+Alertmanager 이미지는 `prom/alertmanager:v0.34.2`를 사용합니다. 로컬 포트 바인딩을 유지하며 CORS 허용 범위를 별도로 확장하지 않습니다.

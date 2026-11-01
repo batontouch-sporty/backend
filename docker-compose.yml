@@ -162,7 +162,7 @@ services:
       - ./monitoring/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
 
   alertmanager:
-    image: prom/alertmanager:v0.34.1
+    image: prom/alertmanager:v0.34.2
     entrypoint: ["/bin/sh", "/etc/alertmanager/entrypoint.sh"]
     command:
       - --storage.path=/alertmanager

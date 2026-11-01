@@ -52,11 +52,12 @@ groups:
 
       - alert: SportyKafkaConsumerLagHigh
         expr: sum by (consumergroup, topic) (kafka_consumergroup_lag) > 100
+        for: 2m
         labels:
           severity: warning
         annotations:
           summary: Kafka 처리 지연
-          description: Consumer Group의 해당 토픽 미처리 메시지(Lag) 합계가 100건을 초과했습니다.
+          description: Consumer Group의 해당 토픽 미처리 메시지(Lag) 합계가 100건을 초과한 상태가 2분간 지속됐습니다.
           action: Consumer 실행 상태와 이벤트 처리 오류를 확인해주세요.
 
 

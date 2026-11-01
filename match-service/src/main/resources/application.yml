@@ -63,6 +63,8 @@ resilience4j:
         failureRateThreshold: 50
         waitDurationInOpenState: 10s
         permittedNumberOfCallsInHalfOpenState: 2
+        ignoreExceptions:
+          - feign.FeignException$NotFound
   timelimiter:
     configs:
       default:

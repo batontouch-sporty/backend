@@ -438,4 +438,21 @@ class MatchRemoteChecksTest {
         entityManager.clear();
         assertThat(matches.findById(match.getId()).orElseThrow().getTitle()).isEqualTo("Original");
     }
+    @Test
+    void repeatedMissingIdsDoNotOpenEitherCircuitAndValidIdsStillWork() {
+        memberStatus.set(404);facilityStatus.set(404);
+        for(int i=0;i<12;i++) {
+            error(()->checks.activeMember(1L),401,"MATCH_USER_NOT_FOUND");
+            error(()->checks.checkFacility(12L,start,end),404,"SERVICE_NOT_FOUND");
+        }
+        assertThat(breakers.getAllCircuitBreakers()).isNotEmpty();
+        breakers.getAllCircuitBreakers().forEach(b->{
+            assertThat(b.getState()).isEqualTo(CircuitBreaker.State.CLOSED);
+            assertThat(b.getMetrics().getNumberOfFailedCalls()).isZero();
+        });
+        memberStatus.set(200);facilityStatus.set(200);
+        assertThat(checks.activeMember(1L).id()).isEqualTo(1L);
+        assertThat(checks.checkFacility(12L,start,end).facilityId()).isEqualTo(12L);
+    }
+
 }

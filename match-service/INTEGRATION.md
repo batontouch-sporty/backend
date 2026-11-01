@@ -23,6 +23,6 @@ I1 `GET /internal/users/{id}`, I2 `GET /internal/users?ids=1,2`, I3 `GET /intern
 
 확인한 실제 시설 코드: PR #41을 포함한 main `adefe5c`. 시설 서비스를 전용 MariaDB 11.4 DB로 실행해 I3 정상·비활성·404·운영시간 밖 요청을 실제 Feign으로 확인했다. 전체 매칭 테스트는 59개 통과했고 실제 브로커 전용 및 서버 중단 전용 테스트 각 1개는 이 실행에서 제외했다.
 
-시설 서버 중단 검증은 동일 서버를 중단한 뒤 `MATCH_LIVE_FACILITY=true`, `MATCH_LIVE_FACILITY_DOWN=true`를 설정하고 `:match-service:test --tests '*LiveFacilityContractTest.actualStoppedFacilityReturns503'`를 실행한다. 이때 기존 활성 시설 조회가 503 `FACILITY_SERVICE_UNAVAILABLE`로 바뀌는 것을 확인한다. 정상 조회 테스트와 중단 테스트는 순서대로 실행한다. 메모리 DB 테스트와 구분되며, 전체 팀 Compose/Eureka/Gateway 연결은 후속 API 연결 뒤 확인한다.
+시설 서버 중단 검증은 동일 서버를 중단한 뒤 `MATCH_LIVE_FACILITY=true`, `MATCH_LIVE_FACILITY_DOWN=true`를 설정하고 `:match-service:test --rerun-tasks --tests '*LiveFacilityContractTest.actualStoppedFacilityReturns503'`를 실행한다. 이때 기존 활성 시설 조회가 503 `FACILITY_SERVICE_UNAVAILABLE`로 바뀌는 것을 확인한다. 정상 조회 테스트와 중단 테스트는 순서대로 실행한다. 메모리 DB 테스트와 구분되며, 전체 팀 Compose/Eureka/Gateway 연결은 후속 API 연결 뒤 확인한다.
 
 회원 I1·I2 내부 API와 매칭 CRUD·참가 서비스의 호출부는 해당 담당 구현 후 연결해야 한다. 이슈 #32의 실제 회원 서비스 통합 완료 조건은 이 연결 뒤 확인한다.

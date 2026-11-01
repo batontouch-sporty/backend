@@ -52,6 +52,15 @@ class ParticipationTest {
         participants.deleteAll();
         matches.deleteAll();
         reset(checks, locks);
+        when(checks.activeMember(anyLong()))
+                .thenAnswer(
+                        invocation ->
+                                new MemberClient.Member(
+                                        invocation.getArgument(0),
+                                        "MALE",
+                                        "ACTIVE",
+                                        "SONGPA",
+                                        List.of()));
     }
 
     MatchEntity match(int capacity, boolean past) {
@@ -151,7 +160,7 @@ class ParticipationTest {
     @Test
     void dependencyFailureLeavesNoParticipantOrStateChange() {
         var m = match(2, false);
-        when(checks.checkParticipant(2L, "MIXED"))
+        when(checks.activeMember(2L))
                 .thenThrow(
                         new MatchDependencyException(
                                 503, "USER_SERVICE_UNAVAILABLE", "Unavailable"));
@@ -160,6 +169,55 @@ class ParticipationTest {
         assertThat(participants.countByMatch_Id(m.getId())).isEqualTo(1);
         assertThat(matches.findById(m.getId()).orElseThrow().getStatus())
                 .isEqualTo(MatchStatus.RECRUITING);
+    }
+
+    @Test
+    void cancelledAndCompletedMatchesKeepParticipantHistory() throws Exception {
+        for (var terminal : List.of(MatchStatus.CANCELLED, MatchStatus.COMPLETED)) {
+            var m = match(3, false);
+            participants.saveAndFlush(
+                    new MatchParticipantEntity(m, 2, MatchParticipantRole.PARTICIPANT));
+            var changedAt = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
+            if (terminal == MatchStatus.CANCELLED) m.cancel("Cancelled test", changedAt);
+            else m.changeStatus(terminal, changedAt);
+            matches.saveAndFlush(m);
+            mvc.perform(
+                            delete("/api/matches/{id}/participants/me", m.getId())
+                                    .header("X-User-Id", "2"))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("MATCH_LEAVE_NOT_ALLOWED"));
+            assertThat(participants.countByMatch_Id(m.getId())).isEqualTo(2);
+            assertThat(matches.findById(m.getId()).orElseThrow().getStatus()).isEqualTo(terminal);
+        }
+    }
+
+    @Test
+    void slowMemberLookupDoesNotHoldTheMatchRowLock() throws Exception {
+        var m = match(4, false);
+        var enteredLookup = new CountDownLatch(1);
+        var releaseLookup = new CountDownLatch(1);
+        when(checks.activeMember(2L))
+                .thenAnswer(
+                        invocation -> {
+                            enteredLookup.countDown();
+                            if (!releaseLookup.await(10, TimeUnit.SECONDS))
+                                throw new IllegalStateException("Lookup timed out");
+                            return new MemberClient.Member(
+                                    2L, "MALE", "ACTIVE", "SONGPA", List.of());
+                        });
+        var pool = Executors.newFixedThreadPool(2);
+        try {
+            var slow = pool.submit(() -> service.join(m.getId(), 2L));
+            assertThat(enteredLookup.await(3, TimeUnit.SECONDS)).isTrue();
+            var other = pool.submit(() -> service.join(m.getId(), 3L));
+            assertThat(other.get(3, TimeUnit.SECONDS).userId()).isEqualTo(3L);
+            releaseLookup.countDown();
+            assertThat(slow.get(3, TimeUnit.SECONDS).userId()).isEqualTo(2L);
+            assertThat(participants.countByMatch_Id(m.getId())).isEqualTo(3);
+        } finally {
+            releaseLookup.countDown();
+            pool.shutdownNow();
+        }
     }
 
     @Test

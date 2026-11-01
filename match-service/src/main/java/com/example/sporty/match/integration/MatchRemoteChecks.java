@@ -1,9 +1,9 @@
 package com.example.sporty.match.integration;
 
 import feign.FeignException;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import org.springframework.stereotype.Service;
 
 import java.time.*;
@@ -55,13 +55,24 @@ public class MatchRemoteChecks {
 
     /** A14 fails closed when user-service is unavailable or membership is inactive. */
     public MemberClient.Member checkParticipant(Long userId, String genderGroup) {
+        validateGenderGroup(genderGroup);
+        var member = activeMember(userId);
+        checkParticipantGender(member, genderGroup);
+        return member;
+    }
+
+    /** Compare an already checked member locally, without a remote call under the match lock. */
+    public void checkParticipantGender(MemberClient.Member member, String genderGroup) {
+        validateGenderGroup(genderGroup);
+        if (member == null) throw unavailable(true);
+        if (!"MIXED".equals(genderGroup) && !genderGroup.equals(member.gender()))
+            throw problem(400, "MATCH_GENDER_NOT_ALLOWED", "성별 조건이 맞지 않습니다.");
+    }
+
+    private static void validateGenderGroup(String genderGroup) {
         if (!Set.of("MALE", "FEMALE", "MIXED")
                 .contains(Objects.requireNonNullElse(genderGroup, "")))
             throw problem(400, "INVALID_INPUT", "성별 구성을 확인해주세요.");
-        var member = activeMember(userId);
-        if (!"MIXED".equals(genderGroup) && !genderGroup.equals(member.gender()))
-            throw problem(400, "MATCH_GENDER_NOT_ALLOWED", "성별 조건이 맞지 않습니다.");
-        return member;
     }
 
     public MemberClient.Member activeMember(Long userId) {

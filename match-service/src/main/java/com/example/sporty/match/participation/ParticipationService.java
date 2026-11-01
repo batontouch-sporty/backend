@@ -38,6 +38,7 @@ public class ParticipationService {
         requireId(matchId);
         requireId(userId);
         locks.lock(userId);
+        var member = checks.activeMember(userId);
         var match =
                 matches.findByIdForUpdate(matchId)
                         .orElseThrow(() -> problem(404, "MATCH_NOT_FOUND", "매치를 찾을 수 없습니다."));
@@ -49,10 +50,7 @@ public class ParticipationService {
             throw problem(400, "MATCH_ALREADY_STARTED", "이미 시작된 매치입니다.");
         if (participants.countByMatch_Id(matchId) >= match.getMaxParticipant())
             throw problem(400, "MATCH_FULL", "매치 정원이 가득 찼습니다.");
-        checks.checkParticipant(userId, match.getGenderGroup().name());
-        // A dependency call can cross the start boundary while holding the match lock.
-        if (!match.getStartAt().isAfter(now()))
-            throw problem(400, "MATCH_ALREADY_STARTED", "이미 시작된 매치입니다.");
+        checks.checkParticipantGender(member, match.getGenderGroup().name());
         var participant =
                 participants.saveAndFlush(
                         new MatchParticipantEntity(
@@ -71,6 +69,9 @@ public class ParticipationService {
         var match =
                 matches.findByIdForUpdate(matchId)
                         .orElseThrow(() -> problem(404, "MATCH_NOT_FOUND", "매치를 찾을 수 없습니다."));
+        if (match.getStatus() == MatchStatus.CANCELLED
+                || match.getStatus() == MatchStatus.COMPLETED)
+            throw problem(400, "MATCH_LEAVE_NOT_ALLOWED", "취소되거나 완료된 매치는 참가 취소할 수 없습니다.");
         var participant =
                 participants
                         .findByMatch_IdAndUserId(matchId, userId)

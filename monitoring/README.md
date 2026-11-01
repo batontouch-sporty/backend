@@ -67,10 +67,12 @@ Prometheus와 Grafana 데이터를 보존하는 이름 있는 볼륨은 정의�
 
 경보 규칙 5종과 Alertmanager 설정은 [alertmanager/README.md](alertmanager/README.md)를 참고합니다.
 서비스 수집은 루트 Compose의 `sporty-services` job과 `application` 라벨을 그대로 사용합니다.
-규칙 파일은 루트 Prometheus에 마운트하며, Discord 알림을 사용할 때 추가 Compose를 함께 지정합니다.
+규칙 파일과 Alertmanager는 루트 Compose에 통합되어 있습니다.
 
 ```powershell
-docker compose -f docker-compose.yml -f monitoring/compose.alerting.yml up -d prometheus alertmanager
+docker compose up -d prometheus alertmanager
 ```
 
-실제 Discord 웹후크는 Git에서 제외된 `.env`의 `DISCORD_WEBHOOK_URL`로만 전달합니다.
+전체 실행은 `docker compose up -d --build --wait`로 통일합니다.
+실제 Discord 웹후크는 Git에서 제외된 `.env`의 `DISCORD_WEBHOOK_URL`로 전달합니다.
+웹후크가 없으면 Alertmanager는 외부 전송 없이 기동하며 Discord 알림만 비활성화됩니다.

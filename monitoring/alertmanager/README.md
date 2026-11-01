@@ -31,27 +31,29 @@ Actuator 요청은 HTTP 비율과 지연 계산에서 제외합니다. 요청이
 
 저장소 루트의 `.env`에 `DISCORD_WEBHOOK_URL`을 설정합니다. 실제 URL은 커밋하지 않습니다.
 `.env.example`에는 변수명과 빈 값만 둡니다.
-Compose Secret의 environment 소스로 전달하고 Alertmanager는 `webhook_url_file`로 읽습니다.
+Compose가 환경변수로 전달하고, 기동 스크립트가 권한을 제한한 임시 파일에 기록합니다.
+Alertmanager는 `webhook_url_file`로 읽으며, 실행 전에 프로세스 환경변수에서 웹후크를 제거합니다.
+웹후크 파일은 이미지·Git·설정 원본에 기록하지 않습니다. Docker 환경변수로 전달하므로 로컬 Docker 관리 권한자는 값을 조회할 수 있습니다.
 Alertmanager YAML 자체에서 환경변수가 자동 치환된다고 가정하지 않습니다.
 일반 YAML이나 이미지 안에 실제 웹후크를 넣지 않습니다.
 
 ## 루트 Compose 통합
 
-루트 Compose의 Prometheus·Grafana 통합본(#50)을 사용합니다.
-규칙 파일은 루트 Prometheus에 이미 마운트되어 있습니다.
-추가 Compose는 Alertmanager와 Secret·볼륨만 선언하며 기존 Prometheus를 중복 실행하지 않습니다.
-루트 Compose를 첫 번째로 지정하여 상대 경로를 저장소 루트 기준으로 해석합니다.
+Prometheus·Grafana·Alertmanager 모두 루트 `docker-compose.yml`에서 실행합니다.
+별도 Compose 파일을 지정할 필요가 없습니다.
 
 ```bash
-docker compose --env-file .env -f docker-compose.yml -f monitoring/compose.alerting.yml config --quiet
-docker compose --env-file .env -f docker-compose.yml -f monitoring/compose.alerting.yml up -d prometheus alertmanager
+docker compose config --quiet
+docker compose up -d --build --wait
+# 모니터링의 경보 구성만 실행/갱신할 때
+docker compose up -d prometheus alertmanager
 ```
 
-루트의 Prometheus는 `monitoring/prometheus.yml`을 `/etc/prometheus/prometheus.yml`로
-마운트하고 Alertmanager와 같은 네트워크를 사용해야 합니다.
-추가 Compose를 지정하지 않으면 Discord 전송용 Alertmanager는 실행되지 않습니다.
-Prometheus 자체의 지표 수집·경보 평가는 계속되지만 알림 전송에는 Alertmanager가 필요합니다.
-소스 환경변수 또는 Secret 갱신 시 Alertmanager 컨테이너를 재생성해야 합니다.
+웹후크가 비어 있으면 Alertmanager는 `discord-disabled` 수신기로 정상 기동하며 외부로 전송하지 않습니다.
+Prometheus 수집과 경보 평가는 유지됩니다. 실제 Discord 알림에는 웹후크 설정이 필요합니다.
+기동 스크립트는 웹후크 값 자체를 로그로 출력하지 않습니다.
+`.env`를 변경한 뒤 `docker compose up -d --force-recreate alertmanager`로 재생성합니다.
+환경변수는 컨테이너 생성 시 반영되므로 단순 restart만으로는 새 값이 반영되지 않습니다.
 
 Alertmanager는 기본적으로 http://localhost:9093 에만 노출됩니다. 외부 공개는 하지 않습니다.
 발생 경보는 10초 동안 묶고, 상태 변경은 30초 간격으로 전달하며, 지속 장애는 4시간마다 다시 알립니다.
@@ -102,7 +104,7 @@ Discord에 도착하는지 확인할 때는 Alertmanager의 전송 성공 카운
 ## 검증 범위 (2026-11-01)
 
 - promtool 규칙 테스트 23개: 기존 4종 14개와 늦은 CLEANED 9개. 늦은 rejected 제외, 0 등록, 지표 누락, 5분 구간 만료, Counter 리셋, 복수 인스턴스 합산을 포함합니다.
-- 루트 Compose + 추가 Compose 구조, Prometheus 설정 및 규칙 5개, Alertmanager 설정과 Secret 마운트를 검사했습니다.
+- Prometheus 설정 및 규칙 5개, Alertmanager 설정을 검사했습니다. 루트 통합 후 웹후크 변수가 없는 환경의 정상 기동과 웹후크가 있는 환경의 로컬 발생·해제 전송을 재검증했습니다.
 - 경보 5종의 발생·해제 메시지 10개를 amtool로 오프라인 렌더링했습니다.
 - 격리된 Prometheus·Alertmanager와 가짜 지표 제공자·로컬 Discord 수신기로 전송 흐름을 검사했습니다. 전송 테스트에서만 집계 구간을 15초로 줄였고 실제 규칙은 5분입니다.
 - 이번 검증에서 실제 Discord 전송, 실제 회원 탈퇴·5분30초 타임아웃 재현, Kafka Exporter 수집 검증은 수행하지 않았습니다. 기존 Discord 연결 테스트와 구분합니다.

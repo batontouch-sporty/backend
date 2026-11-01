@@ -161,6 +161,24 @@ services:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./monitoring/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
 
+  alertmanager:
+    image: prom/alertmanager:v0.34.1
+    entrypoint: ["/bin/sh", "/etc/alertmanager/entrypoint.sh"]
+    command:
+      - --storage.path=/alertmanager
+      - --cluster.listen-address=
+    environment:
+      # 비어 있으면 Discord 전송만 비활성화하고 Alertmanager는 정상 기동한다.
+      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
+    ports:
+      - "127.0.0.1:${ALERTMANAGER_HOST_PORT:-9093}:9093"
+    volumes:
+      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./monitoring/alertmanager/alertmanager.disabled.yml:/etc/alertmanager/alertmanager.disabled.yml:ro
+      - ./monitoring/alertmanager/entrypoint.sh:/etc/alertmanager/entrypoint.sh:ro
+      - ./monitoring/alertmanager/templates:/etc/alertmanager/templates:ro
+      - alertmanager-data:/alertmanager
+
   grafana:
     image: grafana/grafana:13.3.0
     # Compose는 파일 전체를 먼저 해석한다. :?로 막으면 Grafana를 안 쓰는 명령까지 실패하므로 기동할 때 검사한다.
@@ -174,4 +192,5 @@ services:
       - ./monitoring/grafana/dashboards:/etc/grafana/dashboards:ro
 
 volumes:
+  alertmanager-data:
   mariadb-data:

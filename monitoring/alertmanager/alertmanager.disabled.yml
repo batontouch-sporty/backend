@@ -1,0 +1,7 @@
+# No external notification integration when the local webhook is absent.
+global:
+  resolve_timeout: 5m
+route:
+  receiver: discord-disabled
+receivers:
+  - name: discord-disabled

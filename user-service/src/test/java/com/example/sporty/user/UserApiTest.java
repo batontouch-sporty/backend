@@ -262,20 +262,22 @@ class UserApiTest {
 
     // A3 탈퇴 (Saga 전 단계: 즉시 WITHDRAWN)
     @Test
-    void withdrawalChecksPasswordThenWithdraws() throws Exception {
+    void withdrawalChecksPasswordThenAcceptsSaga() throws Exception {
         UserEntity user = user(UserStatus.ACTIVE);
         mvc.perform(delete("/api/users/me").header(AuthHeaders.USER_ID, user.getId()))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("PASSWORD_MISMATCH"));
         mvc.perform(delete("/api/users/me").header(AuthHeaders.USER_ID, user.getId())
                         .contentType(MediaType.APPLICATION_JSON).content("{\"password\":\"WrongPass123!\"}"))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("PASSWORD_MISMATCH"));
-        verifyNoInteractions(refreshTokens);
         mvc.perform(delete("/api/users/me").header(AuthHeaders.USER_ID, user.getId())
                         .contentType(MediaType.APPLICATION_JSON).content("{\"password\":\"" + PASSWORD + "\"}"))
-                .andExpect(status().isNoContent());
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.status").value("WITHDRAWING"))
+                .andExpect(jsonPath("$.sagaId").isNotEmpty());
         reload();
-        assertThat(users.findById(user.getId()).orElseThrow().getStatus()).isEqualTo(UserStatus.WITHDRAWN);
-        verify(refreshTokens).delete(user.getId());
+        assertThat(users.findById(user.getId()).orElseThrow().getStatus()).isEqualTo(UserStatus.WITHDRAWING);
+        // Refresh Token은 매치 정리(CLEANED)가 끝난 뒤에 지운다.
+        verifyNoInteractions(refreshTokens);
     }
 
     private UserEntity user(UserStatus status) {

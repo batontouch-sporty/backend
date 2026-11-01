@@ -1,0 +1,23 @@
+name: PR 규칙
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions: {}
+
+jobs:
+  format:
+    name: 브랜치 · PR 제목 형식
+    runs-on: ubuntu-latest
+    steps:
+      - name: 형식 확인
+        env:
+          BRANCH: ${{ github.head_ref }}
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          types='feat|fix|infra|docs|test|refactor|chore|style'
+          printf '%s' "$BRANCH" | grep -Eq "^($types)/[0-9]+/[a-z0-9-]+$" \
+            || { echo "::error::브랜치 이름은 종류/이슈번호/내용 형식입니다. 예: feat/12/match-join"; exit 1; }
+          printf '%s' "$TITLE" | grep -Eq "^($types) : \[[a-z-]+\] .+" \
+            || { echo "::error::PR 제목은 '종류 : [서비스] 내용' 형식입니다. 예: feat : [match] 매칭 참가 API"; exit 1; }

@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.example.sporty.notification.events.dto.MatchJoinedEvent;
 import com.example.sporty.notification.events.dto.MatchStatusChangedEvent;
+import com.example.sporty.notification.events.dto.WaitlistPromotedEvent;
 import com.example.sporty.notification.events.dto.WithdrawalRejectedEvent;
 import com.example.sporty.notification.events.repository.ProcessedEventRepository;
 import com.example.sporty.notification.events.service.NotificationEventService;
@@ -154,6 +155,47 @@ class NotificationEventServiceTest {
         assertThat(only(OWNER).getBody()).isEqualTo("탈퇴 요청을 처리하지 못했어요. 잠시 후 다시 시도해 주세요");
         assertThat(notifications.findAll()).extracting(NotificationEntity::getBody)
                 .noneMatch(body -> body.matches(".*[A-Z]{2,}_[A-Z].*"));
+    }
+
+    // 대기 승급 → 승급된 회원 한 명에게 참가 확정 알림
+    @Test
+    void waitlistPromotedNotifiesPromotedUser() {
+        String eventId = newEventId();
+        service.handleWaitlistPromoted(new WaitlistPromotedEvent(eventId, 57L, "주말 풋살", USER));
+
+        NotificationEntity mine = only(USER);
+        assertThat(mine.getType()).isEqualTo(NotificationType.WAITLIST_PROMOTED);
+        assertThat(mine.getBody()).isEqualTo("'주말 풋살' 대기가 풀려 참가가 확정됐어요");
+        assertThat(mine.getTitle()).isEqualTo("주말 풋살");
+        assertThat(mine.getTargetMatchId()).isEqualTo(57L);
+        assertThat(notifications.findAll()).hasSize(1);
+        assertThat(processedEvents.existsById(eventId)).isTrue();
+    }
+
+    // 같은 승급 이벤트를 두 번 받아도 한 번만
+    @Test
+    void sameWaitlistPromotedEventIsSavedOnce() {
+        WaitlistPromotedEvent event = new WaitlistPromotedEvent(newEventId(), 57L, "주말 풋살", USER);
+
+        service.handleWaitlistPromoted(event);
+        service.handleWaitlistPromoted(event);
+
+        assertThat(notifications.findAll()).hasSize(1);
+    }
+
+    // userId·matchId가 없거나 0 이하면 알림 없이 처리 기록만
+    @Test
+    void invalidWaitlistPromotedIsRecordedWithoutNotification() {
+        List<WaitlistPromotedEvent> events = List.of(
+                new WaitlistPromotedEvent(newEventId(), 57L, "주말 풋살", null),
+                new WaitlistPromotedEvent(newEventId(), 57L, "주말 풋살", 0L),
+                new WaitlistPromotedEvent(newEventId(), null, "주말 풋살", USER),
+                new WaitlistPromotedEvent(newEventId(), -1L, "주말 풋살", USER));
+
+        events.forEach(service::handleWaitlistPromoted);
+
+        assertThat(notifications.findAll()).isEmpty();
+        assertThat(events).allMatch(e -> processedEvents.existsById(e.eventId()));
     }
 
     // 제목이 없거나 길어도 컬럼 길이 안에서 저장

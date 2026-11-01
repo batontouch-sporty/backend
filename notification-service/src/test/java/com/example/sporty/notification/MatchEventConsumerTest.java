@@ -44,6 +44,7 @@ import com.example.sporty.notification.notifications.repository.NotificationRepo
         KafkaTopics.MATCH_JOINED,
         KafkaTopics.MATCH_STATUS_CHANGED,
         KafkaTopics.MATCH_WITHDRAWAL_REJECTED,
+        KafkaTopics.MATCH_WAITLIST_PROMOTED,
         KafkaTopics.MATCH_STATUS_CHANGED + KafkaTopics.DLT_SUFFIX,
         KafkaTopics.MATCH_WITHDRAWAL_REJECTED + KafkaTopics.DLT_SUFFIX
 })
@@ -103,6 +104,21 @@ class MatchEventConsumerTest {
         assertThat(notifications.findTop50ByRecipientUserIdOrderByCreatedAtDescIdDesc(204L))
                 .singleElement().extracting(n -> n.getBody())
                 .isEqualTo("탈퇴 처리 시간이 지나 탈퇴가 취소됐어요. 잠시 후 다시 시도해 주세요");
+    }
+
+    // match-service(#65)가 보내는 승급 이벤트 형식을 그대로 읽어 승급된 회원에게 알림
+    @Test
+    void consumesWaitlistPromotedEventFromMatchService() {
+        String eventId = UUID.randomUUID().toString();
+
+        kafka.send(KafkaTopics.MATCH_WAITLIST_PROMOTED, "61", """
+                {"matchId":61,"title":"평일 농구","userId":301,"eventId":"%s"}
+                """.formatted(eventId));
+
+        await().atMost(WAIT).until(() -> processedEvents.existsById(eventId));
+        assertThat(notifications.findTop50ByRecipientUserIdOrderByCreatedAtDescIdDesc(301L))
+                .singleElement().extracting(n -> n.getBody())
+                .isEqualTo("'평일 농구' 대기가 풀려 참가가 확정됐어요");
     }
 
     // JSON이 깨진 메시지는 재시도 없이 DLT로

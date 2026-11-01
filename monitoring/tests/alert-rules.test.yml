@@ -1,0 +1,665 @@
+{
+  "rule_files": [
+    "../alert-rules.yml"
+  ],
+  "evaluation_interval": "15s",
+  "tests": [
+    {
+      "name": "service down pending before one minute",
+      "interval": "15s",
+      "input_series": [
+        {
+          "series": "up{application=\"fixture\",job=\"sporty-services\",instance=\"fixture:8080\"}",
+          "values": "0x24"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "45s",
+          "alertname": "SportyServiceDown",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "service down firing after one minute",
+      "interval": "15s",
+      "input_series": [
+        {
+          "series": "up{application=\"fixture\",job=\"sporty-services\",instance=\"fixture:8080\"}",
+          "values": "0x24"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "1m",
+          "alertname": "SportyServiceDown",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "application": "fixture",
+                "job": "sporty-services",
+                "instance": "fixture:8080",
+                "severity": "critical"
+              },
+              "exp_annotations": {
+                "summary": "서비스 다운",
+                "description": "1분 동안 서비스 지표를 수집하지 못했습니다.",
+                "action": "서비스 실행 상태와 네트워크 연결을 확인해주세요."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "service restored stops firing",
+      "interval": "15s",
+      "input_series": [
+        {
+          "series": "up{application=\"fixture\",job=\"sporty-services\",instance=\"fixture:8080\"}",
+          "values": "0x4 1x20"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "2m",
+          "alertname": "SportyServiceDown",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "job service-name fallback",
+      "interval": "15s",
+      "input_series": [
+        {
+          "series": "up{job=\"user-service\",instance=\"fixture:8080\"}",
+          "values": "0x24"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "1m",
+          "alertname": "SportyServiceDown",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "application": "user-service",
+                "job": "user-service",
+                "instance": "fixture:8080",
+                "severity": "critical"
+              },
+              "exp_annotations": {
+                "summary": "서비스 다운",
+                "description": "1분 동안 서비스 지표를 수집하지 못했습니다.",
+                "action": "서비스 실행 상태와 네트워크 연결을 확인해주세요."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5xx remains pending before duration",
+      "interval": "15s",
+      "input_series": [
+        {
+          "series": "http_server_requests_seconds_count{application=\"fixture\",uri=\"/api/test\",status=\"500\"}",
+          "values": "0+10x24"
+        },
+        {
+          "series": "http_server_requests_seconds_count{application=\"fixture\",uri=\"/api/test\",status=\"200\"}",
+          "values": "0+90x24"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "1m",
+          "alertname": "SportyHigh5xxRate",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "5xx fires above threshold",
+      "interval": "15s",
+      "input_series": [
+        {
+          "series": "http_server_requests_seconds_count{application=\"fixture\",uri=\"/api/test\",status=\"500\"}",
+          "values": "0+10x24"
+        },
+        {
+          "series": "http_server_requests_seconds_count{application=\"fixture\",uri=\"/api/test\",status=\"200\"}",
+          "values": "0+90x24"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "4m",
+          "alertname": "SportyHigh5xxRate",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "application": "fixture",
+                "severity": "warning"
+              },
+              "exp_annotations": {
+                "summary": "서버 오류율 상승",
+                "description": "최근 5분간 5xx 오류율이 5%를 초과한 상태가 2분간 지속됐습니다.",
+                "action": "오류 로그와 연관 서비스의 상태를 확인해주세요."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5xx at threshold does not fire",
+      "interval": "15s",
+      "input_series": [
+        {
+          "series": "http_server_requests_seconds_count{application=\"fixture\",uri=\"/api/test\",status=\"500\"}",
+          "values": "0+5x24"
+        },
+        {
+          "series": "http_server_requests_seconds_count{application=\"fixture\",uri=\"/api/test\",status=\"200\"}",
+          "values": "0+95x24"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "4m",
+          "alertname": "SportyHigh5xxRate",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "health requests excluded",
+      "interval": "15s",
+      "input_series": [
+        {
+          "series": "http_server_requests_seconds_count{application=\"fixture\",uri=\"/actuator/prometheus\",status=\"500\"}",
+          "values": "0+10x24"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "4m",
+          "alertname": "SportyHigh5xxRate",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "p95 remains pending before duration",
+      "interval": "15s",
+      "input_series": [
+        {
+          "series": "http_server_requests_seconds_bucket{application=\"fixture\",uri=\"/api/test\",le=\"0.5\"}",
+          "values": "0+80x24"
+        },
+        {
+          "series": "http_server_requests_seconds_bucket{application=\"fixture\",uri=\"/api/test\",le=\"1\"}",
+          "values": "0+90x24"
+        },
+        {
+          "series": "http_server_requests_seconds_bucket{application=\"fixture\",uri=\"/api/test\",le=\"2\"}",
+          "values": "0+100x24"
+        },
+        {
+          "series": "http_server_requests_seconds_bucket{application=\"fixture\",uri=\"/api/test\",le=\"+Inf\"}",
+          "values": "0+100x24"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "1m",
+          "alertname": "SportyHighP95Latency",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "p95 fires above one second",
+      "interval": "15s",
+      "input_series": [
+        {
+          "series": "http_server_requests_seconds_bucket{application=\"fixture\",uri=\"/api/test\",le=\"0.5\"}",
+          "values": "0+80x24"
+        },
+        {
+          "series": "http_server_requests_seconds_bucket{application=\"fixture\",uri=\"/api/test\",le=\"1\"}",
+          "values": "0+90x24"
+        },
+        {
+          "series": "http_server_requests_seconds_bucket{application=\"fixture\",uri=\"/api/test\",le=\"2\"}",
+          "values": "0+100x24"
+        },
+        {
+          "series": "http_server_requests_seconds_bucket{application=\"fixture\",uri=\"/api/test\",le=\"+Inf\"}",
+          "values": "0+100x24"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "4m",
+          "alertname": "SportyHighP95Latency",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "application": "fixture",
+                "severity": "warning"
+              },
+              "exp_annotations": {
+                "summary": "응답 지연",
+                "description": "최근 5분간 p95 응답시간이 1초를 초과한 상태가 2분간 지속됐습니다.",
+                "action": "요청 부하, 외부 API 호출 시간과 CPU·메모리 사용량을 확인해주세요."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "p95 below one second does not fire",
+      "interval": "15s",
+      "input_series": [
+        {
+          "series": "http_server_requests_seconds_bucket{application=\"fixture\",uri=\"/api/test\",le=\"0.5\"}",
+          "values": "0+80x24"
+        },
+        {
+          "series": "http_server_requests_seconds_bucket{application=\"fixture\",uri=\"/api/test\",le=\"1\"}",
+          "values": "0+100x24"
+        },
+        {
+          "series": "http_server_requests_seconds_bucket{application=\"fixture\",uri=\"/api/test\",le=\"+Inf\"}",
+          "values": "0+100x24"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "4m",
+          "alertname": "SportyHighP95Latency",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "Kafka partition lag is summed",
+      "interval": "15s",
+      "input_series": [
+        {
+          "series": "kafka_consumergroup_lag{consumergroup=\"fixture-group\",topic=\"fixture-topic\",partition=\"0\"}",
+          "values": "60x24"
+        },
+        {
+          "series": "kafka_consumergroup_lag{consumergroup=\"fixture-group\",topic=\"fixture-topic\",partition=\"1\"}",
+          "values": "50x24"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "2m",
+          "alertname": "SportyKafkaConsumerLagHigh",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "consumergroup": "fixture-group",
+                "topic": "fixture-topic",
+                "severity": "warning"
+              },
+              "exp_annotations": {
+                "summary": "Kafka 처리 지연",
+                "description": "Consumer Group의 해당 토픽 미처리 메시지(Lag) 합계가 100건을 초과한 상태가 2분간 지속됐습니다.",
+                "action": "Consumer 실행 상태와 이벤트 처리 오류를 확인해주세요."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Kafka exactly 100 does not fire",
+      "interval": "15s",
+      "input_series": [
+        {
+          "series": "kafka_consumergroup_lag{consumergroup=\"fixture-group\",topic=\"fixture-topic\",partition=\"0\"}",
+          "values": "100x24"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "3m",
+          "alertname": "SportyKafkaConsumerLagHigh",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "missing metrics are not fabricated as healthy or firing",
+      "interval": "15s",
+      "input_series": [],
+      "alert_rule_test": [
+        {
+          "eval_time": "5m",
+          "alertname": "SportyServiceDown",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "5m",
+          "alertname": "SportyHigh5xxRate",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "5m",
+          "alertname": "SportyHighP95Latency",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "3m",
+          "alertname": "SportyKafkaConsumerLagHigh",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "late cleaned increase fires",
+      "interval": "15s",
+      "input_series": [
+        {
+          "series": "sporty_withdrawal_saga_late_results_total{application=\"user-service\",outcome=\"cleaned\",instance=\"user-1\"}",
+          "values": "0x4 1x24"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "2m",
+          "alertname": "SportyWithdrawalSagaLateCleaned",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "application": "user-service",
+                "severity": "warning"
+              },
+              "exp_annotations": {
+                "summary": "탈퇴 Saga 늦은 CLEANED",
+                "description": "타임아웃된 탈퇴 Saga에 늦은 CLEANED 결과가 도착했습니다. 회원은 ACTIVE로 복구됐지만 매치 정리는 완료됐을 수 있습니다.",
+                "action": "user-service의 WARN 로그에서 Saga ID와 요청 이벤트 ID를 확인하고 회원·매치 데이터 정합성을 점검해주세요. 회원 상태를 자동 변경하지 않습니다."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "late rejected never alerts",
+      "interval": "15s",
+      "input_series": [
+        {
+          "series": "sporty_withdrawal_saga_late_results_total{application=\"user-service\",outcome=\"rejected\",instance=\"user-1\"}",
+          "values": "0x4 1x24"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "2m",
+          "alertname": "SportyWithdrawalSagaLateCleaned",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "startup zero is not an incident",
+      "interval": "15s",
+      "input_series": [
+        {
+          "series": "sporty_withdrawal_saga_late_results_total{application=\"user-service\",outcome=\"cleaned\",instance=\"user-1\"}",
+          "values": "0x32"
+        },
+        {
+          "series": "sporty_withdrawal_saga_late_results_total{application=\"user-service\",outcome=\"rejected\",instance=\"user-1\"}",
+          "values": "0x32"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "2m",
+          "alertname": "SportyWithdrawalSagaLateCleaned",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "late cleaned missing does not fabricate alert",
+      "interval": "15s",
+      "input_series": [],
+      "alert_rule_test": [
+        {
+          "eval_time": "2m",
+          "alertname": "SportyWithdrawalSagaLateCleaned",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "old late cleaned increment expires",
+      "interval": "15s",
+      "input_series": [
+        {
+          "series": "sporty_withdrawal_saga_late_results_total{application=\"user-service\",outcome=\"cleaned\",instance=\"user-1\"}",
+          "values": "0x4 1x32"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "7m",
+          "alertname": "SportyWithdrawalSagaLateCleaned",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "counter reset without new event does not alert",
+      "interval": "15s",
+      "input_series": [
+        {
+          "series": "sporty_withdrawal_saga_late_results_total{application=\"user-service\",outcome=\"cleaned\",instance=\"user-1\"}",
+          "values": "4x4 0x28"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "2m",
+          "alertname": "SportyWithdrawalSagaLateCleaned",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "counter reset then new cleaned does alert",
+      "interval": "15s",
+      "input_series": [
+        {
+          "series": "sporty_withdrawal_saga_late_results_total{application=\"user-service\",outcome=\"cleaned\",instance=\"user-1\"}",
+          "values": "4x4 0x4 1x24"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "3m",
+          "alertname": "SportyWithdrawalSagaLateCleaned",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "application": "user-service",
+                "severity": "warning"
+              },
+              "exp_annotations": {
+                "summary": "탈퇴 Saga 늦은 CLEANED",
+                "description": "타임아웃된 탈퇴 Saga에 늦은 CLEANED 결과가 도착했습니다. 회원은 ACTIVE로 복구됐지만 매치 정리는 완료됐을 수 있습니다.",
+                "action": "user-service의 WARN 로그에서 Saga ID와 요청 이벤트 ID를 확인하고 회원·매치 데이터 정합성을 점검해주세요. 회원 상태를 자동 변경하지 않습니다."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "multiple replicas aggregate into one alert",
+      "interval": "15s",
+      "input_series": [
+        {
+          "series": "sporty_withdrawal_saga_late_results_total{application=\"user-service\",outcome=\"cleaned\",instance=\"user-1\"}",
+          "values": "0x4 1x24"
+        },
+        {
+          "series": "sporty_withdrawal_saga_late_results_total{application=\"user-service\",outcome=\"cleaned\",instance=\"user-2\"}",
+          "values": "0x4 1x24"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "2m",
+          "alertname": "SportyWithdrawalSagaLateCleaned",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "application": "user-service",
+                "severity": "warning"
+              },
+              "exp_annotations": {
+                "summary": "탈퇴 Saga 늦은 CLEANED",
+                "description": "타임아웃된 탈퇴 Saga에 늦은 CLEANED 결과가 도착했습니다. 회원은 ACTIVE로 복구됐지만 매치 정리는 완료됐을 수 있습니다.",
+                "action": "user-service의 WARN 로그에서 Saga ID와 요청 이벤트 ID를 확인하고 회원·매치 데이터 정합성을 점검해주세요. 회원 상태를 자동 변경하지 않습니다."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "normal saga outcome is not a late incident",
+      "interval": "15s",
+      "input_series": [
+        {
+          "series": "sporty_withdrawal_saga_results_total{application=\"user-service\",outcome=\"success\"}",
+          "values": "0+1x32"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "2m",
+          "alertname": "SportyWithdrawalSagaLateCleaned",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "Kafka remains pending before two minutes",
+      "interval": "15s",
+      "input_series": [
+        {
+          "series": "kafka_consumergroup_lag{consumergroup=\"fixture-group\",topic=\"fixture-topic\",partition=\"0\"}",
+          "values": "110x24"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "1m45s",
+          "alertname": "SportyKafkaConsumerLagHigh",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "Kafka brief lag spike never fires",
+      "interval": "15s",
+      "input_series": [
+        {
+          "series": "kafka_consumergroup_lag{consumergroup=\"fixture-group\",topic=\"fixture-topic\",partition=\"0\"}",
+          "values": "110x3 0x20"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "3m",
+          "alertname": "SportyKafkaConsumerLagHigh",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "Kafka lag recovery clears firing alert",
+      "interval": "15s",
+      "input_series": [
+        {
+          "series": "kafka_consumergroup_lag{consumergroup=\"fixture-group\",topic=\"fixture-topic\",partition=\"0\"}",
+          "values": "110x8 0x16"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "2m",
+          "alertname": "SportyKafkaConsumerLagHigh",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "consumergroup": "fixture-group",
+                "topic": "fixture-topic",
+                "severity": "warning"
+              },
+              "exp_annotations": {
+                "summary": "Kafka 처리 지연",
+                "description": "Consumer Group의 해당 토픽 미처리 메시지(Lag) 합계가 100건을 초과한 상태가 2분간 지속됐습니다.",
+                "action": "Consumer 실행 상태와 이벤트 처리 오류를 확인해주세요."
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "3m",
+          "alertname": "SportyKafkaConsumerLagHigh",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "Kafka interrupted lag restarts pending duration",
+      "interval": "15s",
+      "input_series": [
+        {
+          "series": "kafka_consumergroup_lag{consumergroup=\"fixture-group\",topic=\"fixture-topic\",partition=\"0\"}",
+          "values": "110x3 0 110x24"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "3m",
+          "alertname": "SportyKafkaConsumerLagHigh",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "4m",
+          "alertname": "SportyKafkaConsumerLagHigh",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "consumergroup": "fixture-group",
+                "topic": "fixture-topic",
+                "severity": "warning"
+              },
+              "exp_annotations": {
+                "summary": "Kafka 처리 지연",
+                "description": "Consumer Group의 해당 토픽 미처리 메시지(Lag) 합계가 100건을 초과한 상태가 2분간 지속됐습니다.",
+                "action": "Consumer 실행 상태와 이벤트 처리 오류를 확인해주세요."
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

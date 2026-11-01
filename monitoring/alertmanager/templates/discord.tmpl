@@ -1,0 +1,26 @@
+{{ define "sporty.discord.alert-name" -}}
+{{ if eq .CommonLabels.alertname "SportyServiceDown" }}서비스 다운{{ else if eq .CommonLabels.alertname "SportyHigh5xxRate" }}서버 오류율 상승{{ else if eq .CommonLabels.alertname "SportyHighP95Latency" }}응답 지연{{ else if eq .CommonLabels.alertname "SportyKafkaConsumerLagHigh" }}Kafka 처리 지연{{ else if eq .CommonLabels.alertname "SportyWithdrawalSagaLateCleaned" }}탈퇴 Saga 늦은 CLEANED{{ else }}{{ .CommonLabels.alertname }}{{ end }}
+{{- end }}
+
+{{ define "sporty.discord.title" -}}
+{{ if eq .Status "firing" }}🚨 [Sporty] {{ template "sporty.discord.alert-name" . }}{{ else }}✅ [Sporty] 경보 해제{{ end }}
+{{- end }}
+
+{{ define "sporty.discord.message" -}}
+{{ range $index, $alert := .Alerts }}{{ if lt $index 5 }}
+{{ if eq $alert.Status "resolved" }}경보: {{ $alert.Annotations.summary }}
+{{ end }}{{ if $alert.Labels.application }}서비스: {{ $alert.Labels.application }}
+{{ end }}{{ if $alert.Labels.instance }}대상: {{ $alert.Labels.instance }}
+{{ end }}{{ if $alert.Labels.consumergroup }}Consumer Group: {{ $alert.Labels.consumergroup }}
+{{ end }}{{ if $alert.Labels.topic }}토픽: {{ $alert.Labels.topic }}
+{{ end }}{{ if $alert.Labels.test }}구분: 연동 테스트 — 실제 서비스 장애가 아닙니다.
+{{ end }}{{ if eq $alert.Status "firing" }}{{ if eq $alert.Labels.alertname "SportyWithdrawalSagaLateCleaned" }}상태: 운영 확인 필요{{ else }}상태: 장애 발생{{ end }}
+내용: {{ $alert.Annotations.description }}
+확인 사항: {{ $alert.Annotations.action }}
+발생 시각: {{ $alert.StartsAt | tz "Asia/Seoul" | date "2006-01-02 15:04:05 MST" }}
+{{ else }}상태: 경보 해제
+{{ if eq $alert.Labels.alertname "SportyWithdrawalSagaLateCleaned" }}내용: 최근 5분 내 새로운 늦은 CLEANED 증가가 감지되지 않습니다. 기존 발생 건의 정합성 확인은 별도로 필요합니다.{{ else }}내용: 해당 경보 조건이 더 이상 충족되지 않습니다.{{ end }}
+{{ if eq $alert.Labels.alertname "SportyWithdrawalSagaLateCleaned" }}경보 해제 시각: {{ else }}복구 시각: {{ end }}{{ $alert.EndsAt | tz "Asia/Seoul" | date "2006-01-02 15:04:05 MST" }}
+{{ end }}
+{{ end }}{{ end }}{{ if gt (len .Alerts) 5 }}총 {{ len .Alerts }}건 중 처음 5건을 표시했습니다. 나머지는 Alertmanager에서 확인해주세요.{{ end }}
+{{- end }}

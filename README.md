@@ -46,3 +46,13 @@ curl -L --fail --silent --show-error --output /dev/null \
 Zipkin UI의 기본 접속 주소는 [http://localhost:9411](http://localhost:9411)입니다. 호스트의 9411 포트를 이미 사용 중이라면 `.env`에서 `ZIPKIN_HOST_PORT`를 사용 가능한 포트로 변경하고, 변경한 포트로 접속합니다.
 
 현재 Zipkin은 메모리 저장 방식이므로 컨테이너를 재시작하면 추적 기록이 사라집니다. 이번 구성은 Zipkin 실행 환경만 추가하며, 실제 서비스와 추적 데이터는 후속 Spring 서비스 연동 후 확인할 수 있습니다.
+
+
+## 모니터링과 운영 알림
+
+Prometheus·Grafana·Alertmanager도 루트 Compose의 전체 실행에 포함됩니다.
+경보 구성만 실행하려면 `docker compose up -d prometheus alertmanager`를 사용합니다.
+Grafana 비밀번호는 `.env`의 `GRAFANA_ADMIN_PASSWORD`, Discord 웹후크는 `DISCORD_WEBHOOK_URL`로 설정합니다.
+웹후크가 없으면 Alertmanager는 정상 기동하고 Discord 전송만 비활성화됩니다.
+웹후크를 추가·변경한 뒤에는 `docker compose up -d --force-recreate alertmanager`로 반영합니다.
+자세한 실행법과 검증 범위는 [모니터링 안내](monitoring/README.md)와 [경보 안내](monitoring/alertmanager/README.md)를 참고합니다.

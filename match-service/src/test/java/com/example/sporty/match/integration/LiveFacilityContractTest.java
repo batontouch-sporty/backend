@@ -65,4 +65,16 @@ class LiveFacilityContractTest {
                         MatchDependencyException.class,
                         e -> assertThat(e.code()).isEqualTo("FACILITY_HOURS_MISMATCH"));
     }
+
+    @Test
+    @EnabledIfEnvironmentVariable(named = "MATCH_LIVE_FACILITY_DOWN", matches = "true")
+    void actualStoppedFacilityReturns503() {
+        assertThatThrownBy(() -> checks.checkFacility(12L, start, start.plusHours(2)))
+                .isInstanceOfSatisfying(
+                        MatchDependencyException.class,
+                        e -> {
+                            assertThat(e.status()).isEqualTo(503);
+                            assertThat(e.code()).isEqualTo("FACILITY_SERVICE_UNAVAILABLE");
+                        });
+    }
 }

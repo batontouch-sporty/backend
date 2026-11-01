@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.example.sporty.match.domain.*;
 import com.example.sporty.match.integration.*;
 import com.example.sporty.match.repository.*;
+import com.example.sporty.match.withdrawal.MemberLockTimeoutException;
 import com.example.sporty.match.withdrawal.MemberLocks;
 
 import org.junit.jupiter.api.*;
@@ -191,6 +192,23 @@ class ParticipationTest {
         } finally {
             pool.shutdownNow();
         }
+    }
+
+    @Test
+    void memberLockTimeoutReturns409ForJoinAndLeaveWithoutChangingData() throws Exception {
+        var m = match(3, false);
+        participants.saveAndFlush(
+                new MatchParticipantEntity(m, 2, MatchParticipantRole.PARTICIPANT));
+        doThrow(new MemberLockTimeoutException()).when(locks).lock(2L);
+        mvc.perform(post("/api/matches/{id}/participants", m.getId()).header("X-User-Id", "2"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("MEMBER_OPERATION_IN_PROGRESS"));
+        mvc.perform(delete("/api/matches/{id}/participants/me", m.getId()).header("X-User-Id", "2"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("MEMBER_OPERATION_IN_PROGRESS"));
+        assertThat(participants.countByMatch_Id(m.getId())).isEqualTo(2);
+        assertThat(matches.findById(m.getId()).orElseThrow().getStatus())
+                .isEqualTo(MatchStatus.RECRUITING);
     }
 
     @Test

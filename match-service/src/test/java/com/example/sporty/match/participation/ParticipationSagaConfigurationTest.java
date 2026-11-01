@@ -3,6 +3,7 @@ package com.example.sporty.match.participation;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
+import com.example.sporty.match.waitlist.WaitlistPromotion;
 import com.example.sporty.match.withdrawal.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -24,6 +25,7 @@ class ParticipationSagaConfigurationTest {
                 .withBean(DataSource.class, () -> mock(DataSource.class))
                 .withBean(JdbcTemplate.class, () -> mock(JdbcTemplate.class))
                 .withBean(ObjectMapper.class, ObjectMapper::new)
+                .withBean(WaitlistPromotion.class, () -> mock(WaitlistPromotion.class))
                 .withBean(
                         PlatformTransactionManager.class,
                         () -> mock(PlatformTransactionManager.class))

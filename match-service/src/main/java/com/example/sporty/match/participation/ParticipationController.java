@@ -28,7 +28,7 @@ public class ParticipationController {
         return ResponseEntity.noContent().build();
     }
 
-    private static Long userId(String value) {
+    static Long userId(String value) {
         try {
             long id = Long.parseLong(value);
             if (id > 0) return id;

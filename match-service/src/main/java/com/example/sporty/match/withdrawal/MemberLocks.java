@@ -25,11 +25,22 @@ public class MemberLocks {
     /** Hold a MariaDB session lock through transaction completion, across replicas. */
     @Transactional(propagation = Propagation.MANDATORY)
     public void lock(Long userId) {
+        acquire(userId, 3);
+    }
+
+    /** Never wait for a member lock while holding a match row lock. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void lockImmediately(Long userId) {
+        acquire(userId, 0);
+    }
+
+    private void acquire(Long userId, int waitSeconds) {
         Connection connection = DataSourceUtils.getConnection(dataSource);
         String name = "sporty.match.member." + userId;
         try {
-            try (var statement = connection.prepareStatement("SELECT GET_LOCK(?, 3)")) {
+            try (var statement = connection.prepareStatement("SELECT GET_LOCK(?, ?)")) {
                 statement.setString(1, name);
+                statement.setInt(2, waitSeconds);
                 try (var result = statement.executeQuery()) {
                     if (!result.next()) throw new IllegalStateException("회원 잠금 결과가 없습니다.");
                     int acquired = result.getInt(1);

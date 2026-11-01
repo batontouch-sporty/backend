@@ -24,8 +24,10 @@ public class WithdrawalKafkaConfiguration {
     @Bean
     ConcurrentKafkaListenerContainerFactory<String, String> withdrawalKafkaFactory(
             KafkaTemplate<String, String> withdrawalKafkaTemplate,
-            @Value("${spring.kafka.bootstrap-servers:localhost:9092}") String brokers) {
+            @Value("${spring.kafka.bootstrap-servers:localhost:9092}") String brokers,
+            @Value("${spring.kafka.listener.auto-startup:true}") boolean autoStartup) {
         var factory = new ConcurrentKafkaListenerContainerFactory<String, String>();
+        factory.setAutoStartup(autoStartup);
         factory.setConsumerFactory(
                 new DefaultKafkaConsumerFactory<>(
                         Map.of(

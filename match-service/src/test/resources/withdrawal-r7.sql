@@ -64,3 +64,13 @@ CREATE TABLE outbox_event (
   KEY idx_match_outbox_unpublished (published_at,created_at)
 );
 CREATE INDEX idx_outbox_event_aggregate_id ON outbox_event (aggregate_id);
+
+-- R8 waitlist supplement, required by withdrawal cleanup.
+CREATE TABLE match_waitlist (
+ id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+ match_id BIGINT NOT NULL,
+ user_id BIGINT NOT NULL,
+ registered_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+ CONSTRAINT uk_match_waitlist_match_user UNIQUE(match_id,user_id),
+ CONSTRAINT fk_match_waitlist_match FOREIGN KEY(match_id) REFERENCES matches(id) ON DELETE CASCADE
+);

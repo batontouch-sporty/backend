@@ -6,7 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
-@RestControllerAdvice(assignableTypes = ParticipationController.class)
+@RestControllerAdvice(assignableTypes = {ParticipationController.class, WaitlistController.class})
 public class ParticipationAdvice {
     public record Error(String code, String message) {}
 

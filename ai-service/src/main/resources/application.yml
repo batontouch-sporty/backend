@@ -5,7 +5,28 @@ spring:
   application:
     name: ai-service
   config:
-    import: optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}
+    # 로컬 실행 때는 저장소 루트의 .env(docker compose와 같은 파일)에서 OpenAI 키를 읽는다.
+    import:
+      - optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}
+      - optional:file:./.env[.properties]
+      - optional:file:../.env[.properties]
+  ai:
+    openai:
+      # 키가 비어 있어도 서비스는 뜬다. 이때 AI 호출은 실패하고 초안은 503, 검색·추천은 Fallback으로 응답한다.
+      api-key: ${OPENAI_API_KEY:not-configured}
+      chat:
+        options:
+          model: ${OPENAI_MODEL:gpt-4o-mini}
+          parallel-tool-calls: false
+    retry:
+      # 응답이 길어지지 않도록 재시도하지 않는다(기본 10회). HTTP 클라이언트 재시도도 없다(LlmTimeoutConfig).
+      max-attempts: 1
+
+# LLM 호출 타임아웃. 넘으면 초안은 503, 검색·추천은 Fallback으로 응답한다.
+ai:
+  llm:
+    connect-timeout: 3s
+    read-timeout: 8s
 
 eureka:
   instance:

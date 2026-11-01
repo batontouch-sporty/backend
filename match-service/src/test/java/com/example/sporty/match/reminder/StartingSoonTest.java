@@ -90,6 +90,31 @@ class StartingSoonTest {
     }
 
     @Test
+    void emptyRecipientMatchesDoNotConsumeCandidateLimitAndCanBecomeEligibleLater() {
+        for (long id = 1; id <= 100; id++) {
+            match(id, now.plusHours(1), "CLOSED");
+        }
+        jdbc.update("DELETE FROM match_participants");
+        match(101, now.plusHours(2), "RECRUITING");
+        assertThat(store.candidates()).containsExactly(101L);
+        assertThat(store.enqueue(101)).isTrue();
+        assertThat(store.enqueue(1)).isFalse();
+        jdbc.update("INSERT INTO match_participants(match_id,user_id,role) VALUES(1,101,'OWNER')");
+        assertThat(store.candidates()).containsExactly(1L);
+        assertThat(store.enqueue(1)).isTrue();
+        assertThat(count()).isEqualTo(2);
+    }
+
+    @Test
+    void recipientRemovalAfterSelectionStillPreventsEmptyEvent() {
+        match(1, now.plusHours(1), "CLOSED");
+        assertThat(store.candidates()).containsExactly(1L);
+        jdbc.update("DELETE FROM match_participants WHERE match_id=1");
+        assertThat(store.enqueue(1)).isFalse();
+        assertThat(count()).isZero();
+    }
+
+    @Test
     void selectsDueWindowIncludingUnder24HoursButNotCancelledOrStarted() {
         match(1, now.plusHours(24), "RECRUITING");
         match(2, now.plusMinutes(5), "CLOSED");

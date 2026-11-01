@@ -64,3 +64,10 @@ withdrawal:
   saga:
     timeout: ${WITHDRAWAL_SAGA_TIMEOUT:5m}
     grace: ${WITHDRAWAL_SAGA_GRACE:30s}
+
+# 개발·시연용 관리자 초기 계정. ADMIN_EMAIL·ADMIN_PASSWORD가 둘 다 있으면 기동할 때 없을 때만 만든다.
+admin:
+  account:
+    email: ${ADMIN_EMAIL:}
+    password: ${ADMIN_PASSWORD:}
+    nickname: ${ADMIN_NICKNAME:}

@@ -83,7 +83,7 @@ public class WithdrawalStore {
     public List<Long> recipients(long matchId) {
         return jdbc.queryForList(
                 "SELECT user_id FROM match_participants WHERE match_id=? ORDER BY"
-                    + " match_participant_id",
+                        + " match_participant_id",
                 Long.class,
                 matchId);
     }
@@ -108,9 +108,13 @@ public class WithdrawalStore {
     public void leave(long id, long userId) {
         jdbc.update(
                 "DELETE FROM match_participants WHERE match_id=? AND user_id=? AND"
-                    + " role='PARTICIPANT'",
+                        + " role='PARTICIPANT'",
                 id,
                 userId);
+    }
+
+    public void clearWaitlist(long userId) {
+        jdbc.update("DELETE FROM match_waitlist WHERE user_id=?", userId);
     }
 
     /** Reopen a pre-start closed match only when cleanup has actually freed capacity. */
@@ -137,7 +141,7 @@ public class WithdrawalStore {
         try {
             jdbc.update(
                     "INSERT INTO outbox_event(event_id,aggregate_id,event_type,payload) VALUES"
-                        + " (?,?,?,?)",
+                            + " (?,?,?,?)",
                     eventId,
                     Long.toString(key),
                     topic,

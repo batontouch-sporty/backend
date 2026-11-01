@@ -3,6 +3,7 @@ package com.example.sporty.match.participation;
 import com.example.sporty.match.domain.*;
 import com.example.sporty.match.integration.MatchRemoteChecks;
 import com.example.sporty.match.repository.*;
+import com.example.sporty.match.waitlist.WaitlistPromotion;
 import com.example.sporty.match.withdrawal.MemberLocks;
 
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -18,18 +19,21 @@ public class ParticipationService {
     private final MatchRemoteChecks checks;
     private final MemberLocks locks;
     private final ParticipationEvents events;
+    private final WaitlistPromotion promotion;
 
     public ParticipationService(
             MatchRepository matches,
             MatchParticipantRepository participants,
             MatchRemoteChecks checks,
             @Qualifier("participationMemberLocks") MemberLocks locks,
-            ParticipationEvents events) {
+            ParticipationEvents events,
+            WaitlistPromotion promotion) {
         this.matches = matches;
         this.participants = participants;
         this.checks = checks;
         this.locks = locks;
         this.events = events;
+        this.promotion = promotion;
     }
 
     public record Participation(
@@ -92,6 +96,7 @@ public class ParticipationService {
             throw problem(403, "MATCH_OWNER_CANNOT_LEAVE", "방장은 참가 취소할 수 없습니다.");
         participants.delete(participant);
         participants.flush();
+        promotion.promote(matchId);
         var now = now();
         if (match.getStatus() == MatchStatus.CLOSED
                 && match.getStartAt().isAfter(now)

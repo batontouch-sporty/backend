@@ -37,6 +37,12 @@ public class ParticipationEvents {
         emit("match.joined.v1", match.getId(), fields);
     }
 
+    public void promoted(MatchEntity match, long userId) {
+        var fields = base(match);
+        fields.put("userId", userId);
+        emit("match.waitlist-promoted.v1", match.getId(), fields);
+    }
+
     public void statusChanged(MatchEntity match, MatchStatus from, String reason) {
         var rows = participants.findAllByMatch_IdOrderByIdAsc(match.getId());
         var fields = base(match);
@@ -69,7 +75,7 @@ public class ParticipationEvents {
         try {
             jdbc.update(
                     "INSERT INTO outbox_event(event_id,aggregate_id,event_type,payload) VALUES"
-                        + " (?,?,?,?)",
+                            + " (?,?,?,?)",
                     eventId,
                     matchId.toString(),
                     topic,

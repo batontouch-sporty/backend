@@ -24,14 +24,14 @@
 
 - `match.outbox.enabled`: 기본 true. false여도 업무 이벤트 저장은 계속하고 발행만 중지한다.
 - `match.outbox.delay-ms`: 기본 1초. 미설정 시 기존 `match.withdrawal.outbox-delay-ms`를 사용한다.
-- 지원 토픽: joined, status-changed, withdrawal-cleaned, withdrawal-rejected의 v1.
+- 지원 토픽: joined, status-changed, waitlist-promoted, withdrawal-cleaned, withdrawal-rejected의 v1.
 - 미발행 행을 잠그고 Kafka ACK 후에만 published_at을 기록한다.
 - Kafka 발행 실패 시 미발행 상태를 유지하며 동일 eventId·payload로 재시도한다.
 - Kafka 전송 성공 뒤 DB 표시 실패가 가능하므로 전달은 at-least-once다. 알림 서비스의
   processed_events 및 (event_id, recipient_user_id, type) 고유 제약으로 중복을 막는다.
 
 R7의 기존 outbox_event 테이블을 사용하며 DDL·권한·다른 서비스 코드는 변경하지 않는다.
-#10이 같은 토픽을 저장할 때도 이 발행기를 사용한다. 대기열 승급 토픽은 #35에서 추가한다.
+#10이 같은 토픽을 저장할 때도 이 발행기를 사용한다. 대기열 승급 토픽은 #35로 추가했다. payload는 eventId·matchId·title·userId이며 key는 matchId다. 알림 서비스의 P1 수신부 연결은 별도 작업이다.
 
 ## 검증
 

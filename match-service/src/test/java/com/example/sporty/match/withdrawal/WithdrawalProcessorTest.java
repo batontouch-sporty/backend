@@ -61,6 +61,7 @@ class WithdrawalProcessorTest {
         ds.setDriverClassName(maria ? "org.mariadb.jdbc.Driver" : "org.h2.Driver");
         if (maria) {
             var cleanup = new JdbcTemplate(ds);
+            cleanup.execute("DROP TABLE IF EXISTS match_waitlist");
             cleanup.execute("DROP TABLE IF EXISTS match_participants");
             cleanup.execute("DROP TABLE IF EXISTS matches");
             cleanup.execute("DROP TABLE IF EXISTS processed_events");
@@ -139,7 +140,7 @@ class WithdrawalProcessorTest {
     }
 
     @Test
-    void cleanupUsesOnlyR7TablesAndIncludesOwnerAndCorrelation() throws Exception {
+    void cleanupUsesOnlyOwnedTablesAndIncludesOwnerAndCorrelation() throws Exception {
         long owned = match(2, "RECRUITING", false), joined = match(1, "CLOSED", false);
         participant(joined, 2, "PARTICIPANT");
         var r = request(2);
@@ -170,7 +171,7 @@ class WithdrawalProcessorTest {
                                 "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE"
                                     + " TABLE_SCHEMA=SCHEMA()",
                                 Long.class))
-                .isEqualTo(4);
+                .isEqualTo(5);
     }
 
     @Test

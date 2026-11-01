@@ -12,15 +12,26 @@ public class WithdrawalProcessor {
     private final MemberLocks locks;
     private final TransactionTemplate tx;
     private final Clock clock;
+    private final java.util.function.LongConsumer promoteVacancy;
 
     public WithdrawalProcessor(
             WithdrawalStore store,
             MemberLocks locks,
             PlatformTransactionManager manager,
             Clock clock) {
+        this(store, locks, manager, clock, id -> {});
+    }
+
+    public WithdrawalProcessor(
+            WithdrawalStore store,
+            MemberLocks locks,
+            PlatformTransactionManager manager,
+            Clock clock,
+            java.util.function.LongConsumer promoteVacancy) {
         this.store = store;
         this.locks = locks;
         this.clock = clock;
+        this.promoteVacancy = promoteVacancy;
         tx = new TransactionTemplate(manager);
         tx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
@@ -82,6 +93,7 @@ public class WithdrawalProcessor {
             return;
         }
         List<Long> canceled = new ArrayList<>(), left = new ArrayList<>();
+        store.clearWaitlist(r.userId());
         for (var m : matches) {
             if (Set.of("CANCELLED", "COMPLETED").contains(m.status()) || !m.end().isAfter(now))
                 continue;
@@ -96,6 +108,7 @@ public class WithdrawalProcessor {
             } else {
                 store.leave(m.id(), r.userId());
                 left.add(m.id());
+                if (m.start().isAfter(now)) promoteVacancy.accept(m.id());
                 if (m.start().isAfter(now) && store.reopen(m, clock.instant()))
                     status(r, m, "CLOSED", "RECRUITING", store.owner(m.id()), List.of());
             }

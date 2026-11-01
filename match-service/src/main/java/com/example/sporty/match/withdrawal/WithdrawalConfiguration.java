@@ -1,5 +1,6 @@
 package com.example.sporty.match.withdrawal;
 
+import com.example.sporty.match.waitlist.WaitlistPromotion;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -31,8 +32,10 @@ public class WithdrawalConfiguration {
     WithdrawalProcessor withdrawalProcessor(
             WithdrawalStore store,
             @Qualifier("withdrawalMemberLocks") MemberLocks locks,
-            PlatformTransactionManager manager) {
-        return new WithdrawalProcessor(store, locks, manager, Clock.systemUTC());
+            PlatformTransactionManager manager,
+            WaitlistPromotion promotion) {
+        return new WithdrawalProcessor(
+                store, locks, manager, Clock.systemUTC(), promotion::promote);
     }
 
     @Bean

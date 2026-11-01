@@ -4,6 +4,7 @@ import com.example.sporty.notification.events.KafkaTopics;
 import com.example.sporty.notification.events.domain.entity.ProcessedEventEntity;
 import com.example.sporty.notification.events.dto.MatchJoinedEvent;
 import com.example.sporty.notification.events.dto.MatchStatusChangedEvent;
+import com.example.sporty.notification.events.dto.WaitlistPromotedEvent;
 import com.example.sporty.notification.events.dto.WithdrawalRejectedEvent;
 import com.example.sporty.notification.events.repository.ProcessedEventRepository;
 import com.example.sporty.notification.notifications.domain.entity.NotificationEntity;
@@ -103,6 +104,31 @@ public class NotificationEventService {
         }
 
         saveAll(event.eventId(), KafkaTopics.MATCH_WITHDRAWAL_REJECTED, notifications);
+    }
+
+    // match.waitlist-promoted.v1 → 승급된 회원에게 참가 확정 알림
+    @Transactional
+    public void handleWaitlistPromoted(WaitlistPromotedEvent event) {
+        requireEventId(event.eventId());
+        if (alreadyProcessed(event.eventId())) {
+            return;
+        }
+
+        // 받는 사람·모임을 알 수 없는 이벤트는 다시 받아도 같으므로 재시도하지 않고 기록만 남긴다.
+        List<NotificationEntity> notifications = new ArrayList<>();
+        if (isPositive(event.userId()) && isPositive(event.matchId())) {
+            notifications.add(build(event.eventId(), event.userId(), NotificationType.WAITLIST_PROMOTED,
+                    event.title(), quote(event.title()) + "대기가 풀려 참가가 확정됐어요", event.matchId()));
+        } else {
+            log.warn("userId·matchId가 올바르지 않은 승급 이벤트라 알림을 보내지 않음: eventId={}, userId={}, matchId={}",
+                    event.eventId(), event.userId(), event.matchId());
+        }
+
+        saveAll(event.eventId(), KafkaTopics.MATCH_WAITLIST_PROMOTED, notifications);
+    }
+
+    private static boolean isPositive(Long id) {
+        return id != null && id > 0;
     }
 
     // 마감 알림은 방장 한 명에게만 보낸다. ownerId가 없으면 보낼 대상을 알 수 없어 기록만 남긴다.

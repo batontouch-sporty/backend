@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -20,5 +21,9 @@ public interface UserRepository extends JpaRepository<UserEntity, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select u from UserEntity u where u.id = :id")
     Optional<UserEntity> findForUpdate(Long id);
+
+    // [A28] 상태별 회원 수 [status, count]
+    @Query("select u.status, count(u) from UserEntity u group by u.status")
+    List<Object[]> countGroupByStatus();
 
 }

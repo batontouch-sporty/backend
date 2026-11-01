@@ -1,5 +1,6 @@
 package com.example.sporty.user.commons.handler;
 
+import com.example.sporty.user.commons.exception.auth.ForbiddenException;
 import com.example.sporty.user.commons.exception.auth.InvalidRefreshTokenException;
 import com.example.sporty.user.commons.exception.auth.LoginFailException;
 import com.example.sporty.user.commons.exception.profiles.ProfileNotFoundException;
@@ -51,6 +52,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(UserNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleUserNotFound(UserNotFoundException e) {
         return error(HttpStatus.NOT_FOUND, "USER_NOT_FOUND", e.getMessage());
+    }
+
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<ErrorResponse> handleForbidden(ForbiddenException e) {
+        return error(HttpStatus.FORBIDDEN, "FORBIDDEN", e.getMessage());
     }
 
     @ExceptionHandler(WithdrawalInProgressException.class)

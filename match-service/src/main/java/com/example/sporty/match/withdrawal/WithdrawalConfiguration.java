@@ -2,6 +2,7 @@ package com.example.sporty.match.withdrawal;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.*;
 import org.springframework.context.annotation.*;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -28,7 +29,9 @@ public class WithdrawalConfiguration {
 
     @Bean
     WithdrawalProcessor withdrawalProcessor(
-            WithdrawalStore store, MemberLocks locks, PlatformTransactionManager manager) {
+            WithdrawalStore store,
+            @Qualifier("withdrawalMemberLocks") MemberLocks locks,
+            PlatformTransactionManager manager) {
         return new WithdrawalProcessor(store, locks, manager, Clock.systemUTC());
     }
 

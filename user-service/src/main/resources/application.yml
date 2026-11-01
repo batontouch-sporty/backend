@@ -28,6 +28,15 @@ spring:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_HOST_PORT:6379}
       timeout: 6000ms
+  kafka:
+    # Compose에서는 공통 환경변수 SPRING_KAFKA_BOOTSTRAP_SERVERS(kafka:29092)가 이 값을 덮어쓴다.
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:${KAFKA_HOST_PORT:9092}}
+    producer:
+      # 브로커가 없을 때 Outbox 발행이 DB 잠금을 오래 잡지 않게 대기 시간을 줄인다.
+      properties:
+        max.block.ms: 3000
+    consumer:
+      auto-offset-reset: earliest
 
 jwt:
   secret: ${JWT_SECRET_KEY}
@@ -47,3 +56,11 @@ management:
         include:
           - health
           - info
+          - prometheus
+
+# 탈퇴 Saga. 시연에서 시간 초과를 빨리 보여 줄 때는 WITHDRAWAL_SAGA_TIMEOUT(예: 30s)·WITHDRAWAL_SAGA_GRACE를 줄인다.
+# timeout은 match-service 규칙대로 0초 초과 5분 이하만 된다.
+withdrawal:
+  saga:
+    timeout: ${WITHDRAWAL_SAGA_TIMEOUT:5m}
+    grace: ${WITHDRAWAL_SAGA_GRACE:30s}

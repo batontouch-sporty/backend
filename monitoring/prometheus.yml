@@ -6,3 +6,27 @@ scrape_configs:
   - job_name: prometheus
     static_configs:
       - targets: ["localhost:9090"]
+
+  - job_name: sporty-services
+    metrics_path: /actuator/prometheus
+    # 대상 라벨은 up에도 application을 붙인다. 지표의 같은 태그가 exported_application으로 바뀌지 않게 한다.
+    honor_labels: true
+    static_configs:
+      - targets: ["user-service:8081"]
+        labels:
+          application: user-service
+      - targets: ["match-service:8082"]
+        labels:
+          application: match-service
+      - targets: ["facility-service:8083"]
+        labels:
+          application: facility-service
+      - targets: ["ai-service:8084"]
+        labels:
+          application: ai-service
+      - targets: ["notification-service:8085"]
+        labels:
+          application: notification-service
+      - targets: ["gateway-service:8001"]
+        labels:
+          application: gateway-service

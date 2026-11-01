@@ -47,7 +47,7 @@ services:
       JWT_SECRET_KEY: &jwt ${JWT_SECRET_KEY:?JWT_SECRET_KEY가 필요하다. .env.example을 본다}
       # 값이 없으면 넘기지 않아 서비스 기본값을 쓴다. 비워서 넘기면 기본값이 무시된다.
       CORS_ALLOWED_ORIGIN:
-      PROMETHEUS_URL:
+      PROMETHEUS_URL: ${PROMETHEUS_URL:-http://prometheus:9090}
     ports:
       - "127.0.0.1:${GATEWAY_HOST_PORT:-8000}:8000"
 
@@ -148,6 +148,23 @@ services:
       STORAGE_TYPE: mem
     ports:
       - "127.0.0.1:${ZIPKIN_HOST_PORT:-9411}:9411"
+
+  prometheus:
+    image: prom/prometheus:v3.15.1
+    ports:
+      - "127.0.0.1:${PROMETHEUS_HOST_PORT:-9090}:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
+  grafana:
+    image: grafana/grafana:13.3.0
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?}
+    ports:
+      - "127.0.0.1:${GRAFANA_HOST_PORT:-3001}:3000"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/etc/grafana/dashboards:ro
 
 volumes:
   mariadb-data:

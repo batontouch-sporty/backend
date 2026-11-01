@@ -1,11 +1,11 @@
 # Grafana 대시보드 초안
 
-각 JSON은 Grafana Dashboards > New > Import에서 개별로 불러옵니다.
+각 JSON은 Grafana 시작 때 파일 provider로 자동 등록됩니다.
 데이터 소스 UID는 기존 자동 등록한 `sporty-prometheus`입니다.
 다른 환경에서는 해당 UID로 Prometheus를 등록하거나 JSON의 UID를 변경합니다.
 대시보드 UID는 파일마다 달라 서로 덮어쓰지 않습니다.
 
-현재 작업은 패널 배치와 조회식 초안입니다. 자동 등록 provider는 아직 추가하지 않았습니다.
+현재 작업은 패널 배치와 조회식 초안입니다.
 지표 미연결 시 데이터 없음이 정상입니다. 모든 패널에 가짜 0 또는 UP을 채우지 않습니다.
 쿼리 문법 검사는 실제 서비스 지표가 생성되거나 업무 의미가 검증되었다는 뜻이 아닙니다.
 시각적 임계값은 Alertmanager/Slack 경보 규칙이 아닙니다.

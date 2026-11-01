@@ -40,7 +40,7 @@ jobs:
             url="http://127.0.0.1:8000/$service-service/actuator/health"
             # Eureka 등록 전에는 Gateway가 503을 줄 수 있다.
             for attempt in $(seq 1 30); do
-              curl -fs "$url" > /dev/null && break
+              curl -fs --max-time 5 "$url" > /dev/null && break
               [ "$attempt" -eq 30 ] && { echo "::error::$service-service health 실패"; exit 1; }
               sleep 3
             done

@@ -47,7 +47,7 @@ Prometheus와 Grafana 데이터를 보존하는 이름 있는 볼륨은 정의�
 | sporty-domain-ai.json | 도메인 AI |
 
 현재 범위는 패널 배치·유형·단위·조회식 초안입니다. 수집되지 않는 지표는 데이터 없음으로 표시됩니다.
-서비스별 실측 연동, 부하·장애 시연, Slack 알림은 별도 작업입니다.
+서비스별 실측 연동과 부하·장애 시연은 별도 검증이 필요합니다. 운영 알림은 Discord로 연결합니다.
 지표 이름과 라벨의 가정 및 커스텀 Counter 제안은 `grafana/dashboards/README.md`를 확인합니다.
 
 ## 대시보드 형식과 Grafana 버전
@@ -62,3 +62,15 @@ Prometheus와 Grafana 데이터를 보존하는 이름 있는 볼륨은 정의�
 - 위 UUID를 다른 대시보드의 spec에서 참조하지 않는지 확인했습니다.
   데이터 소스 UID인 `sporty-prometheus`는 별개이며 유지해야 합니다.
 - 대시보드 스키마 안내: https://grafana.com/docs/grafana/latest/visualizations/dashboards/build-dashboards/view-dashboard-json-model/
+
+## 장애 경보와 Discord 알림 (#37)
+
+경보 규칙 5종과 Alertmanager 설정은 [alertmanager/README.md](alertmanager/README.md)를 참고합니다.
+서비스 수집은 루트 Compose의 `sporty-services` job과 `application` 라벨을 그대로 사용합니다.
+규칙 파일은 루트 Prometheus에 마운트하며, Discord 알림을 사용할 때 추가 Compose를 함께 지정합니다.
+
+```powershell
+docker compose -f docker-compose.yml -f monitoring/compose.alerting.yml up -d prometheus alertmanager
+```
+
+실제 Discord 웹후크는 Git에서 제외된 `.env`의 `DISCORD_WEBHOOK_URL`로만 전달합니다.

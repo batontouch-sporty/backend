@@ -1,0 +1,73 @@
+groups:
+  - name: sporty-service-alerts
+    interval: 15s
+    rules:
+      - alert: SportyServiceDown
+        expr: |
+          (up{application=~".+"} == 0)
+          or
+          (up{job=~"(user|match|facility|ai|notification|gateway|config|discovery)-service"} == 0)
+        for: 1m
+        labels:
+          severity: critical
+          application: '{{ if $labels.application }}{{ $labels.application }}{{ else }}{{ $labels.job }}{{ end }}'
+        annotations:
+          summary: 서비스 다운
+          description: 1분 동안 서비스 지표를 수집하지 못했습니다.
+          action: 서비스 실행 상태와 네트워크 연결을 확인해주세요.
+
+      - alert: SportyHigh5xxRate
+        expr: |
+          100 *
+          sum by (application) (
+            rate(http_server_requests_seconds_count{application=~".+",uri!~"/actuator.*",status=~"5.."}[5m])
+          )
+          /
+          sum by (application) (
+            rate(http_server_requests_seconds_count{application=~".+",uri!~"/actuator.*"}[5m])
+          ) > 5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: 서버 오류율 상승
+          description: 최근 5분간 5xx 오류율이 5%를 초과한 상태가 2분간 지속됐습니다.
+          action: 오류 로그와 연관 서비스의 상태를 확인해주세요.
+
+      - alert: SportyHighP95Latency
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (application, le) (
+              rate(http_server_requests_seconds_bucket{application=~".+",uri!~"/actuator.*"}[5m])
+            )
+          ) > 1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: 응답 지연
+          description: 최근 5분간 p95 응답시간이 1초를 초과한 상태가 2분간 지속됐습니다.
+          action: 요청 부하, 외부 API 호출 시간과 CPU·메모리 사용량을 확인해주세요.
+
+      - alert: SportyKafkaConsumerLagHigh
+        expr: sum by (consumergroup, topic) (kafka_consumergroup_lag) > 100
+        labels:
+          severity: warning
+        annotations:
+          summary: Kafka 처리 지연
+          description: Consumer Group의 해당 토픽 미처리 메시지(Lag) 합계가 100건을 초과했습니다.
+          action: Consumer 실행 상태와 이벤트 처리 오류를 확인해주세요.
+
+
+      - alert: SportyWithdrawalSagaLateCleaned
+        expr: |
+          sum by (application) (
+            increase(sporty_withdrawal_saga_late_results_total{application=~".+",outcome="cleaned"}[5m])
+          ) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: 탈퇴 Saga 늦은 CLEANED
+          description: 타임아웃된 탈퇴 Saga에 늦은 CLEANED 결과가 도착했습니다. 회원은 ACTIVE로 복구됐지만 매치 정리는 완료됐을 수 있습니다.
+          action: user-service의 WARN 로그에서 Saga ID와 요청 이벤트 ID를 확인하고 회원·매치 데이터 정합성을 점검해주세요. 회원 상태를 자동 변경하지 않습니다.

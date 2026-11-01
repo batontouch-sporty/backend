@@ -18,7 +18,7 @@ spring:
         options:
           model: ${OPENAI_MODEL:gpt-4o-mini}
     retry:
-      # 프론트 요청 제한(15초) 안에 끝나도록 재시도하지 않는다(기본 10회).
+      # 응답이 길어지지 않도록 재시도하지 않는다(기본 10회). HTTP 클라이언트 재시도도 없다(LlmTimeoutConfig).
       max-attempts: 1
 
 # LLM 호출 타임아웃. 넘으면 초안은 503, 검색·추천은 Fallback으로 응답한다.

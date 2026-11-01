@@ -28,7 +28,7 @@ public class WithdrawalConfiguration {
 
     @Bean
     WithdrawalProcessor withdrawalProcessor(
-            WithdrawalStore store, MemberLocks locks, PlatformTransactionManager manager) {
+            WithdrawalStore store, @org.springframework.beans.factory.annotation.Qualifier("withdrawalMemberLocks") MemberLocks locks, PlatformTransactionManager manager) {
         return new WithdrawalProcessor(store, locks, manager, Clock.systemUTC());
     }
 

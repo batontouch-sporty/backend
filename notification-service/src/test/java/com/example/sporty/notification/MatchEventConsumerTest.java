@@ -78,6 +78,33 @@ class MatchEventConsumerTest {
         assertThat(notifications.findTop50ByRecipientUserIdOrderByCreatedAtDescIdDesc(102L)).hasSize(1);
     }
 
+    // match-service(#36)가 보내는 R7 형식(ownerId·sagaId·requestEventId·rejectedAt 포함)을 그대로 읽는다
+    @Test
+    void consumesR7SagaPayloadsFromMatchService() {
+        String cancelled = UUID.randomUUID().toString();
+        String rejected = UUID.randomUUID().toString();
+        String sagaId = UUID.randomUUID().toString();
+
+        kafka.send(KafkaTopics.MATCH_STATUS_CHANGED, "60", """
+                {"eventId":"%s","matchId":60,"title":"탈퇴 테스트","from":"RECRUITING","to":"CANCELLED","ownerId":201,
+                 "participantIds":[202,203],"reason":"모임장 회원 탈퇴로 인한 모임 취소","sagaId":"%s"}
+                """.formatted(cancelled, sagaId));
+        kafka.send(KafkaTopics.MATCH_WITHDRAWAL_REJECTED, "204", """
+                {"eventId":"%s","sagaId":"%s","requestEventId":"%s","userId":204,"rejectedAt":"2026-11-01T03:00:00Z",
+                 "reason":"DEADLINE_EXCEEDED","blockingMatchIds":[]}
+                """.formatted(rejected, sagaId, UUID.randomUUID()));
+
+        await().atMost(WAIT).until(() -> processedEvents.existsById(cancelled) && processedEvents.existsById(rejected));
+
+        assertThat(notifications.findTop50ByRecipientUserIdOrderByCreatedAtDescIdDesc(202L))
+                .singleElement().extracting(n -> n.getBody())
+                .isEqualTo("'탈퇴 테스트' 모임이 취소됐어요 (사유: 모임장 회원 탈퇴로 인한 모임 취소)");
+        assertThat(notifications.findTop50ByRecipientUserIdOrderByCreatedAtDescIdDesc(201L)).isEmpty();
+        assertThat(notifications.findTop50ByRecipientUserIdOrderByCreatedAtDescIdDesc(204L))
+                .singleElement().extracting(n -> n.getBody())
+                .isEqualTo("탈퇴 처리 시간이 지나 탈퇴가 취소됐어요. 잠시 후 다시 시도해 주세요");
+    }
+
     // JSON이 깨진 메시지는 재시도 없이 DLT로
     @Test
     void brokenMessageGoesToDeadLetterTopic() {

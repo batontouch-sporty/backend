@@ -75,45 +75,85 @@ class NotificationEventServiceTest {
     @Test
     void cancelledNotifiesEveryParticipantWithReason() {
         service.handleMatchStatusChanged(new MatchStatusChangedEvent(newEventId(), 57L, "주말 풋살",
-                "RECRUITING", "CANCELLED", Arrays.asList(OWNER, USER, USER, null), "우천"));
+                "RECRUITING", "CANCELLED", OWNER, Arrays.asList(OWNER, USER, USER, null), "모임장 회원 탈퇴로 인한 모임 취소"));
 
         assertThat(notifications.findAll()).hasSize(2);
         assertThat(only(USER).getType()).isEqualTo(NotificationType.STATUS_CHANGED);
-        assertThat(only(USER).getBody()).isEqualTo("'주말 풋살' 모임이 취소됐어요 (사유: 우천)");
+        assertThat(only(USER).getBody()).isEqualTo("'주말 풋살' 모임이 취소됐어요 (사유: 모임장 회원 탈퇴로 인한 모임 취소)");
         assertThat(only(OWNER).getTargetMatchId()).isEqualTo(57L);
     }
 
-    // CLOSED → 마감 알림
+    // 사유가 코드 값이면 회원에게 보이지 않게 빼고, 없으면 사유 없이 보낸다
     @Test
-    void closedNotifiesParticipants() {
+    void cancelledReasonThatLooksLikeCodeIsHidden() {
         service.handleMatchStatusChanged(new MatchStatusChangedEvent(newEventId(), 57L, "주말 풋살",
-                "RECRUITING", "CLOSED", List.of(OWNER, USER), null));
+                "RECRUITING", "CANCELLED", OWNER, List.of(USER), "USER_WITHDRAWAL"));
+        service.handleMatchStatusChanged(new MatchStatusChangedEvent(newEventId(), 58L, "평일 농구",
+                "CLOSED", "CANCELLED", OWNER, List.of(OWNER), null));
 
-        assertThat(only(USER).getBody()).isEqualTo("'주말 풋살' 모임 모집이 마감됐어요");
+        assertThat(only(USER).getBody()).isEqualTo("'주말 풋살' 모임이 취소됐어요");
+        assertThat(only(OWNER).getBody()).isEqualTo("'평일 농구' 모임이 취소됐어요");
     }
 
-    // 마감·취소가 아닌 상태 변경은 알림 없이 처리 기록만
+    // CLOSED → 방장에게만 마감 알림(참가자에게는 보내지 않음)
     @Test
-    void otherStatusChangesAreRecordedWithoutNotification() {
+    void closedNotifiesOnlyOwner() {
+        service.handleMatchStatusChanged(new MatchStatusChangedEvent(newEventId(), 57L, "주말 풋살",
+                "RECRUITING", "CLOSED", OWNER, List.of(OWNER, USER), null));
+
+        assertThat(notifications.findAll()).hasSize(1);
+        assertThat(only(OWNER).getBody()).isEqualTo("'주말 풋살' 모임 모집이 마감됐어요");
+        assertThat(only(OWNER).getTargetMatchId()).isEqualTo(57L);
+    }
+
+    // ownerId가 없는 CLOSED는 보낼 사람을 알 수 없어 알림 없이 처리 기록만
+    @Test
+    void closedWithoutOwnerIsRecordedWithoutNotification() {
         String eventId = newEventId();
         service.handleMatchStatusChanged(new MatchStatusChangedEvent(eventId, 57L, "주말 풋살",
-                "CLOSED", "IN_PROGRESS", List.of(OWNER, USER), null));
+                "RECRUITING", "CLOSED", null, List.of(OWNER, USER), null));
 
         assertThat(notifications.findAll()).isEmpty();
         assertThat(processedEvents.existsById(eventId)).isTrue();
     }
 
-    // 탈퇴 거절 → 요청한 회원에게, 매치 없음
+    // 마감·취소가 아닌 상태 변경(탈퇴로 인한 모집 재개 포함)은 알림 없이 처리 기록만
+    @Test
+    void otherStatusChangesAreRecordedWithoutNotification() {
+        String inProgress = newEventId();
+        String reopened = newEventId();
+        service.handleMatchStatusChanged(new MatchStatusChangedEvent(inProgress, 57L, "주말 풋살",
+                "CLOSED", "IN_PROGRESS", OWNER, List.of(OWNER, USER), null));
+        service.handleMatchStatusChanged(new MatchStatusChangedEvent(reopened, 57L, "주말 풋살",
+                "CLOSED", "RECRUITING", OWNER, List.of(), "참가자 회원 탈퇴로 인한 모집 재개"));
+
+        assertThat(notifications.findAll()).isEmpty();
+        assertThat(processedEvents.existsById(inProgress)).isTrue();
+        assertThat(processedEvents.existsById(reopened)).isTrue();
+    }
+
+    // 탈퇴 거절(진행 중인 모임의 방장) → 요청한 회원에게, 매치 없음
     @Test
     void withdrawalRejectedNotifiesRequester() {
-        service.handleWithdrawalRejected(new WithdrawalRejectedEvent(newEventId(), UUID.randomUUID().toString(),
-                USER, "IN_PROGRESS_OWNER", List.of(57L)));
+        service.handleWithdrawalRejected(rejected(USER, "OWNER_OF_IN_PROGRESS_MATCH"));
 
         NotificationEntity mine = only(USER);
         assertThat(mine.getType()).isEqualTo(NotificationType.WITHDRAWAL_REJECTED);
         assertThat(mine.getBody()).isEqualTo("진행 중인 모임이 있어 탈퇴할 수 없어요");
         assertThat(mine.getTitle()).isEqualTo("회원 탈퇴");
         assertThat(mine.getTargetMatchId()).isNull();
+    }
+
+    // 거절 사유별로 문구가 다르고, 코드 값은 본문에 드러나지 않는다
+    @Test
+    void withdrawalRejectedMessageDependsOnReason() {
+        service.handleWithdrawalRejected(rejected(USER, "DEADLINE_EXCEEDED"));
+        service.handleWithdrawalRejected(rejected(OWNER, "SOMETHING_NEW"));
+
+        assertThat(only(USER).getBody()).isEqualTo("탈퇴 처리 시간이 지나 탈퇴가 취소됐어요. 잠시 후 다시 시도해 주세요");
+        assertThat(only(OWNER).getBody()).isEqualTo("탈퇴 요청을 처리하지 못했어요. 잠시 후 다시 시도해 주세요");
+        assertThat(notifications.findAll()).extracting(NotificationEntity::getBody)
+                .noneMatch(body -> body.matches(".*[A-Z]{2,}_[A-Z].*"));
     }
 
     // 제목이 없거나 길어도 컬럼 길이 안에서 저장
@@ -145,5 +185,10 @@ class NotificationEventServiceTest {
 
     private static String newEventId() {
         return UUID.randomUUID().toString();
+    }
+
+    private WithdrawalRejectedEvent rejected(long userId, String reason) {
+        return new WithdrawalRejectedEvent(newEventId(), UUID.randomUUID().toString(), UUID.randomUUID().toString(),
+                userId, reason, List.of(57L));
     }
 }

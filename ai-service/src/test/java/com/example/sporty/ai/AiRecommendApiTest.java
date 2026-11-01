@@ -1,10 +1,12 @@
 package com.example.sporty.ai;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.hasSize;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -12,9 +14,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -27,6 +31,7 @@ import com.example.sporty.ai.client.MatchClient;
 import com.example.sporty.ai.client.UserClient;
 import com.example.sporty.ai.client.dto.InternalUserDto;
 import com.example.sporty.ai.client.dto.MatchDto;
+import com.example.sporty.ai.client.dto.MatchSearchQuery;
 import com.example.sporty.ai.client.dto.MyMatchDto;
 import com.example.sporty.ai.domain.enums.District;
 import com.example.sporty.ai.domain.enums.Gender;
@@ -161,6 +166,21 @@ class AiRecommendApiTest {
         recommend()
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.code").value("AI_RECOMMEND_FAILED"));
+    }
+
+    @Test
+    void 후보는_한국_시간_기준으로_지금_이후_시작하는_모집_중_매치() throws Exception {
+        when(userClient.getUser(USER_ID)).thenReturn(me());
+        when(matchClient.searchMatches(any())).thenReturn(List.of());
+        when(matchClient.getMyMatches(eq(USER_ID))).thenReturn(List.of());
+        LocalDateTime before = LocalDateTime.now(ZoneId.of("Asia/Seoul")).minusSeconds(1);
+
+        recommend().andExpect(status().isOk());
+
+        ArgumentCaptor<MatchSearchQuery> captor = ArgumentCaptor.forClass(MatchSearchQuery.class);
+        verify(matchClient).searchMatches(captor.capture());
+        assertThat(captor.getValue().getStatus()).isEqualTo(MatchStatus.RECRUITING);
+        assertThat(captor.getValue().getStartAt()).isAfter(before);
     }
 
     @Test

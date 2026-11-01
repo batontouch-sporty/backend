@@ -23,6 +23,11 @@ spring:
       max-attempts: 1
 
   cloud:
+    loadbalancer:
+      retry:
+        # spring-ai가 가져온 spring-retry 때문에 LoadBalancer 재시도가 켜져 응답 지연 때 호출이 2번 나간다.
+        # 끄지 않으면 read 3초가 6초가 되고, user·match·me가 모두 느리면 18초로 프론트 15초를 넘는다.
+        enabled: false
     openfeign:
       client:
         config:

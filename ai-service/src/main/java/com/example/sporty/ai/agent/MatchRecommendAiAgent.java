@@ -1,6 +1,7 @@
 package com.example.sporty.ai.agent;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -47,6 +48,8 @@ public class MatchRecommendAiAgent {
 
     static final int RECOMMEND_SIZE = 3;
     static final int CANDIDATE_MAX = 20;
+    // 컨테이너는 UTC라서 서버 시간대를 따르면 9시간 전에 시작한 매치가 후보에 들어간다(match-service와 같은 기준).
+    private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
 
     private static final Comparator<MatchDto> LATEST_FIRST =
             Comparator.comparing(MatchDto::getMatchId, Comparator.nullsLast(Comparator.reverseOrder()));
@@ -115,7 +118,7 @@ public class MatchRecommendAiAgent {
         try {
             recruiting = matchClient.searchMatches(MatchSearchQuery.builder()
                     .status(MatchStatus.RECRUITING)
-                    .startAt(LocalDateTime.now())
+                    .startAt(LocalDateTime.now(SEOUL))
                     .build());
         } catch (FeignException e) {
             // 매치 목록이 없으면 대체 결과도 만들 수 없다.

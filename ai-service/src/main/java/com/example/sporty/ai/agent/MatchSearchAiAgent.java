@@ -102,7 +102,7 @@ public class MatchSearchAiAgent {
             return matches == null ? List.of() : matches;
         } catch (FeignException e) {
             log.warn("AI 검색 중 match-service 호출 실패: status={}", e.status());
-            throw AiException.unavailable();
+            throw AiException.searchUnavailable();
         }
     }
 

@@ -49,7 +49,13 @@ public class AiException extends RuntimeException {
                 SupportedSports.unsupportedMessage());
     }
 
-    // A23: LLM 실패·타임아웃(초안은 LLM 없이 만들 수 없음), A22: match 호출 실패
+    // A22: match-service 호출 실패. 프론트가 메시지를 그대로 보여주므로 검색용 문구를 따로 둔다.
+    public static AiException searchUnavailable() {
+        return new AiException(HttpStatus.SERVICE_UNAVAILABLE, "AI_UNAVAILABLE",
+                "매치 목록을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.");
+    }
+
+    // A23: LLM 실패·타임아웃. 초안은 LLM 없이 만들 수 없어 Fallback 대신 503
     public static AiException unavailable() {
         return new AiException(HttpStatus.SERVICE_UNAVAILABLE, "AI_UNAVAILABLE", "직접 입력해 주세요");
     }

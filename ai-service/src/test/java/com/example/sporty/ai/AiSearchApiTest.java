@@ -149,6 +149,7 @@ class AiSearchApiTest {
 
         search("풋살")
                 .andExpect(status().isServiceUnavailable())
-                .andExpect(jsonPath("$.code").value("AI_UNAVAILABLE"));
+                .andExpect(jsonPath("$.code").value("AI_UNAVAILABLE"))
+                .andExpect(jsonPath("$.message").value("매치 목록을 불러오지 못했습니다. 잠시 후 다시 시도해주세요."));
     }
 }

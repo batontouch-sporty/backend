@@ -115,12 +115,14 @@ public class MatchDraftAiAgent {
                 .build();
     }
 
-    // Spring AI가 도구 인자를 enum으로 바꾸다 실패하면 원인 어딘가에 IllegalArgumentException이 있다.
+    // Spring AI가 도구 인자를 종목(SportType)으로 바꾸다 실패하면 원인 어딘가에 IllegalArgumentException이 있다.
+    // 다른 enum(실력·성별 등) 변환 오류는 종목 안내가 맞지 않으므로 여기서 거르지 않는다.
     static boolean isUnsupportedValue(Throwable e) {
         for (Throwable t = e; t != null; t = t.getCause()) {
             if (t instanceof IllegalArgumentException
                     && t.getMessage() != null
-                    && t.getMessage().contains("No enum constant")) {
+                    && t.getMessage().contains("No enum constant")
+                    && t.getMessage().contains("SportType.")) {
                 return true;
             }
             if (t.getCause() == t) {
@@ -142,13 +144,12 @@ public class MatchDraftAiAgent {
         }
     }
 
-    // tool은 호출됐지만 매치 정보가 하나도 없는 경우 (제목·설명은 AI가 항상 쓰므로 제외)
+    // 명세: 종목·지역·날짜·인원 중 하나도 없으면 정보 부족. 실력·제목·설명만 있으면 초안으로 보지 않는다.
     private boolean hasNoMatchInfo(AiDraftDto draft) {
         return draft.getSportType() == null
                 && draft.getRegion() == null
                 && draft.getStartAt() == null
-                && draft.getMaxParticipant() == null
-                && draft.getSkillLevel() == null;
+                && draft.getMaxParticipant() == null;
     }
 
     private static String cut(String text, int max) {

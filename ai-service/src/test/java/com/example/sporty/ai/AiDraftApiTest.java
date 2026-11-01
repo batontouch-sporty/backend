@@ -111,6 +111,26 @@ class AiDraftApiTest {
     }
 
     @Test
+    void 실력만_있는_초안은_400_AI_DRAFT_INSUFFICIENT() throws Exception {
+        when(draftChat.call(anyString(), anyString()))
+                .thenReturn("{\"skillLevel\":\"BEGINNER\",\"title\":\"초보 환영\"}");
+
+        requestDraft("초보만 오세요")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("AI_DRAFT_INSUFFICIENT"));
+    }
+
+    @Test
+    void 종목이_아닌_값_변환_오류는_503_AI_UNAVAILABLE() throws Exception {
+        when(draftChat.call(anyString(), anyString())).thenThrow(new IllegalArgumentException(
+                "No enum constant com.example.sporty.ai.domain.enums.SkillLevel.EXPERT"));
+
+        requestDraft("송파 농구 고수만")
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("AI_UNAVAILABLE"));
+    }
+
+    @Test
     void 빈_입력은_LLM_호출_없이_400_INVALID_INPUT() throws Exception {
         requestDraft(" ")
                 .andExpect(status().isBadRequest())

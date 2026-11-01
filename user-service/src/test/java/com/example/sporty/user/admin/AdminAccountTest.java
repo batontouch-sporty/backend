@@ -93,7 +93,20 @@ class AdminAccountTest {
         assertThat(service.ensureAdmin("not-an-email", "AdminPass123!", null)).isEqualTo(Result.SKIPPED_INVALID);
         assertThat(service.ensureAdmin(email(), "short", null)).isEqualTo(Result.SKIPPED_INVALID);
         assertThat(service.ensureAdmin(email(), "x".repeat(21), null)).isEqualTo(Result.SKIPPED_INVALID);
+        assertThat(service.ensureAdmin(email(), "AdminPass123!", "n".repeat(51))).isEqualTo(Result.SKIPPED_INVALID);
         assertThat(users.count()).isEqualTo(before);
+    }
+
+    // 가입·로그인의 @Email이 거부하는 이메일로는 만들지 않는다(만들면 로그인 400으로 쓸 수 없는 계정이 됨)
+    @Test
+    void emailRejectedBySignupAndLoginValidationCreatesNothing() throws Exception {
+        String email = "admin@demo..example.com";
+        mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"" + email + "\",\"password\":\"AdminPass123!\"}"))
+                .andExpect(status().isBadRequest());
+
+        assertThat(service.ensureAdmin(email, "AdminPass123!", null)).isEqualTo(Result.SKIPPED_INVALID);
+        assertThat(users.findByEmail(email)).isEmpty();
     }
 
     // 같은 이메일의 일반 회원이 있으면 관리자로 올리거나 비밀번호를 바꾸지 않는다

@@ -20,6 +20,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.*;
@@ -258,6 +259,30 @@ class MatchCrudDraftTest {
                 .isEqualTo(MatchStatus.RECRUITING);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM outbox_event", Integer.class))
                 .isEqualTo(2);
+    }
+
+    @Test
+    void updateCallsFacilityAndProfileOutsideTheDatabaseTransaction() {
+        Long id = service.create(1L, request(3));
+        when(checks.checkFacility(anyLong(), any(), any()))
+                .thenAnswer(
+                        invocation -> {
+                            assertThat(TransactionSynchronizationManager.isActualTransactionActive())
+                                    .isFalse();
+                            return new MatchRemoteChecks.FacilitySnapshot(
+                                    12L, "Court", "Location", "송파구", true, "https://example.org/book");
+                        });
+        when(checks.profiles(anyList()))
+                .thenAnswer(
+                        invocation -> {
+                            assertThat(TransactionSynchronizationManager.isActualTransactionActive())
+                                    .isFalse();
+                            return Map.of();
+                        });
+
+        service.update(id, 1L, update(3));
+        verify(checks).checkFacility(eq(12L), any(), any());
+        verify(checks).profiles(anyList());
     }
 
     @Test

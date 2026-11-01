@@ -12,7 +12,10 @@ import jakarta.persistence.criteria.Predicate;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.*;
 import java.util.*;
@@ -28,6 +31,7 @@ public class MatchCrudService {
     private final MatchRemoteChecks checks;
     private final MemberLocks locks;
     private final ParticipationEvents events;
+    private final TransactionTemplate transactions;
 
     public MatchCrudService(
             MatchRepository matches,
@@ -35,13 +39,15 @@ public class MatchCrudService {
             MatchFacilityIntegration facility,
             MatchRemoteChecks checks,
             @Qualifier("participationMemberLocks") MemberLocks locks,
-            ParticipationEvents events) {
+            ParticipationEvents events,
+            PlatformTransactionManager transactionManager) {
         this.matches = matches;
         this.participants = participants;
         this.facility = facility;
         this.checks = checks;
         this.locks = locks;
         this.events = events;
+        this.transactions = new TransactionTemplate(transactionManager);
     }
 
     @Transactional
@@ -138,43 +144,54 @@ public class MatchCrudService {
                 .toList();
     }
 
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public MatchDtos.Detail detail(Long matchId, Long viewer) {
         validId(matchId);
         return toDetail(matches.findById(matchId).orElseThrow(MatchCrudService::notFound), viewer);
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public MatchDtos.Detail update(Long matchId, Long userId, MatchDtos.Update request) {
         validId(matchId);
         validId(userId);
-        locks.lock(userId);
-        var match = locked(matchId);
+        // The facility call may take seconds. Finish it before holding the match row lock.
+        var currentMatch = matches.findById(matchId).orElseThrow(MatchCrudService::notFound);
         owner(matchId, userId, "MATCH_MODIFY_FORBIDDEN");
-        if (match.getStatus() == MatchStatus.CANCELLED)
-            throw problem(400, "MATCH_MODIFY_NOT_ALLOWED", "취소된 매치는 수정할 수 없습니다.");
-        if (match.getStatus() == MatchStatus.IN_PROGRESS
-                || match.getStatus() == MatchStatus.COMPLETED
-                || !match.getStartAt().isAfter(now()))
-            throw problem(400, "MATCH_ALREADY_STARTED", "이미 시작된 매치는 수정할 수 없습니다.");
+        requireEditable(currentMatch);
         validPeriod(request.startAt(), request.endAt());
-        long current = participants.countByMatch_Id(matchId);
-        if (request.maxParticipant() < current)
+        if (request.maxParticipant() < participants.countByMatch_Id(matchId))
             throw problem(400, "MATCH_CAPACITY_BELOW_CURRENT", "정원을 현재 참가 인원보다 줄일 수 없습니다.");
-        var from = match.getStatus();
-        var originalStart = match.getStartAt();
-        facility.update(match, request.details(match.getSportType()), match.getFacilityId());
-        if (!originalStart.isAfter(now()))
-            throw problem(400, "MATCH_ALREADY_STARTED", "이미 시작된 매치는 수정할 수 없습니다.");
-        validPeriod(request.startAt(), request.endAt());
-        var next =
-                current >= request.maxParticipant() ? MatchStatus.CLOSED : MatchStatus.RECRUITING;
-        if (from != next) {
-            if (next == MatchStatus.CLOSED) match.closeRecruitment(now());
-            else match.reopenRecruitment(now());
-            events.statusChanged(match, from, "정원 변경으로 모집 상태 변경");
-        }
-        matches.flush();
-        return toDetail(match, userId);
+        var facilityId = currentMatch.getFacilityId();
+        var snapshot =
+                checks.checkFacility(facilityId, request.startAt(), request.endAt())
+                        .toEntitySnapshot();
+        transactions.executeWithoutResult(
+                tx -> {
+                    locks.lock(userId);
+                    var match = locked(matchId);
+                    owner(matchId, userId, "MATCH_MODIFY_FORBIDDEN");
+                    if (!facilityId.equals(match.getFacilityId()))
+                        throw problem(409, "MATCH_CHANGED", "시설 정보가 변경되었습니다. 다시 시도해주세요.");
+                    requireEditable(match);
+                    validPeriod(request.startAt(), request.endAt());
+                    long current = participants.countByMatch_Id(matchId);
+                    if (request.maxParticipant() < current)
+                        throw problem(400, "MATCH_CAPACITY_BELOW_CURRENT", "정원을 현재 참가 인원보다 줄일 수 없습니다.");
+                    var from = match.getStatus();
+                    match.update(request.details(match.getSportType()), snapshot);
+                    var next =
+                            current >= request.maxParticipant()
+                                    ? MatchStatus.CLOSED
+                                    : MatchStatus.RECRUITING;
+                    if (from != next) {
+                        if (next == MatchStatus.CLOSED) match.closeRecruitment(now());
+                        else match.reopenRecruitment(now());
+                        events.statusChanged(match, from, "정원 변경으로 모집 상태 변경");
+                    }
+                    matches.flush();
+                });
+        // Profile I2 is display-only and must not run while holding the row lock.
+        return detail(matchId, userId);
     }
 
     @Transactional
@@ -278,6 +295,15 @@ public class MatchCrudService {
                 .findByMatch_IdAndUserId(matchId, userId)
                 .filter(p -> p.getRole() == MatchParticipantRole.OWNER)
                 .isEmpty()) throw problem(403, code, "방장만 처리할 수 있습니다.");
+    }
+
+    private static void requireEditable(MatchEntity match) {
+        if (match.getStatus() == MatchStatus.CANCELLED)
+            throw problem(400, "MATCH_MODIFY_NOT_ALLOWED", "취소된 매치는 수정할 수 없습니다.");
+        if (match.getStatus() == MatchStatus.IN_PROGRESS
+                || match.getStatus() == MatchStatus.COMPLETED
+                || !match.getStartAt().isAfter(now()))
+            throw problem(400, "MATCH_ALREADY_STARTED", "이미 시작된 매치는 수정할 수 없습니다.");
     }
 
     private static String like(String value) {

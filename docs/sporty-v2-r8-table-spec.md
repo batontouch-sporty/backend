@@ -7,7 +7,7 @@ Do not run the R8 install script against the legacy `sporty` database.
 | Artifact | Location | Purpose |
 | --- | --- | --- |
 | R8 install DDL and R7-to-R8 migration | [Notion DDL task](https://app.notion.com/p/40aacf1215c081869e7ecf41c57cefe1) | New empty databases and existing R7 databases use different scripts. |
-| Table specification | Team Google Sheet (link in the Notion ERD task) | `테이블_개요`, `컬럼_명세`, `관계_인덱스`, and migration/decision tabs. The sheet link is withheld from this public repository until its anonymous access is read-only. |
+| Table specification | [Sporty_MSA_2조_테이블_명세서](https://docs.google.com/spreadsheets/d/1F15pg_r1B2P2dcYx2t711Dly_EKglfvVFggl4VnKl3I/edit?usp=sharing) | Source sheet for `테이블_개요`, `컬럼_명세`, `관계_인덱스`, and migration/decision tabs. A team member confirmed on 2026-11-01 that link access was changed to Viewer; this permission could not be independently rechecked through the connected Drive tool. |
 | ERD | [ERDCloud](https://www.erdcloud.com/d/pgng7QFGTrLtasq7t) | Service-owned databases and their relationships. |
 | ERD review notes | [Notion ERD task](https://app.notion.com/p/40aacf1215c08183a9b7ece34fb114f2) | ERDCloud review progress and remaining checks. |
 | Annotated ERD image | [Notion DDL task](https://app.notion.com/p/40aacf1215c081869e7ecf41c57cefe1) | Shows facility reservation URL in match snapshot example. |

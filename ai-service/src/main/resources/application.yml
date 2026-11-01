@@ -17,6 +17,7 @@ spring:
       chat:
         options:
           model: ${OPENAI_MODEL:gpt-4o-mini}
+          parallel-tool-calls: false
     retry:
       # 응답이 길어지지 않도록 재시도하지 않는다(기본 10회). HTTP 클라이언트 재시도도 없다(LlmTimeoutConfig).
       max-attempts: 1

@@ -11,6 +11,7 @@ import com.example.sporty.user.profiles.repository.ProfileRepository;
 import com.example.sporty.user.sportpreference.domain.entity.SportPreferenceEntity;
 import com.example.sporty.user.sportpreference.repository.SportPreferenceRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -40,7 +41,13 @@ public class ProfileService {
         }
 
         // 3. 변경 감지로 닉네임 저장
+        // 위 중복 검사를 동시에 통과한 같은 닉네임은 DB 유니크 제약에서 걸린다 → 500 대신 409
         profile.updateProfile(nickname, request.getDistrict());
+        try {
+            profileRepository.flush();
+        } catch (DataIntegrityViolationException e) {
+            throw new DuplicateNicknameException();
+        }
 
         // 4. 기존 선호 종목 삭제
         sportPreferenceRepository.deleteByProfileId(profile.getId());

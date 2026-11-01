@@ -35,6 +35,7 @@ jobs:
         run: docker compose up -d --build --wait --wait-timeout 480
 
       - name: Gateway 경유 서비스 확인
+        timeout-minutes: 3
         run: |
           for service in user match facility ai notification; do
             url="http://127.0.0.1:8000/$service-service/actuator/health"

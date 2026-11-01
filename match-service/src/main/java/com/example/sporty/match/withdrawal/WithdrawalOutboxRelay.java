@@ -13,7 +13,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.util.concurrent.TimeUnit;
 
 @Component
-@ConditionalOnProperty(name = "match.withdrawal.enabled", havingValue = "true")
+@ConditionalOnProperty(name = "match.outbox.enabled", havingValue = "true", matchIfMissing = true)
 public class WithdrawalOutboxRelay {
     private final JdbcTemplate jdbc;
     private final KafkaTemplate<String, String> kafka;
@@ -28,18 +28,17 @@ public class WithdrawalOutboxRelay {
         tx = new TransactionTemplate(manager);
     }
 
-    @Scheduled(fixedDelayString = "${match.withdrawal.outbox-delay-ms:1000}")
-    /** Lock pending Saga rows and mark published only after Kafka ACK; failures stay retryable. */
+    @Scheduled(
+            fixedDelayString = "${match.outbox.delay-ms:${match.withdrawal.outbox-delay-ms:1000}}")
+    /** Shared match relay; the legacy class name remains for Saga compatibility. */
     public void publish() {
         try {
             var ids =
                     jdbc.queryForList(
                             "SELECT event_id FROM outbox_event WHERE published_at IS NULL AND"
-                                + " (event_type IN"
-                                + " ('match.withdrawal-cleaned.v1','match.withdrawal-rejected.v1')"
-                                + " OR (event_type='match.status-changed.v1' AND"
-                                + " JSON_VALUE(payload,'$.sagaId') IS NOT NULL)) ORDER BY"
-                                + " created_at,event_id LIMIT 50",
+                                + " event_type IN ('match.joined.v1','match.status-changed.v1',"
+                                + " 'match.withdrawal-cleaned.v1','match.withdrawal-rejected.v1')"
+                                + " ORDER BY created_at,event_id LIMIT 50",
                             String.class);
             for (String id : ids) {
                 try {

@@ -81,6 +81,9 @@ eureka:
       defaultZone: ${EUREKA_URL:http://localhost:8761/eureka}
 
 management:
+  # 8000은 외부에 게시되므로 Gateway 자신의 Actuator는 내부 수집용 포트로 분리한다.
+  server:
+    port: 8001
   endpoints:
     web:
       exposure:

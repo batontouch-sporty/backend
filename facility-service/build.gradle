@@ -1,6 +1,7 @@
 dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     // 서울시 공공데이터 API 호출(1차 SeoulFacilityApiClient의 WebClient)
     implementation 'org.springframework.boot:spring-boot-starter-webflux'

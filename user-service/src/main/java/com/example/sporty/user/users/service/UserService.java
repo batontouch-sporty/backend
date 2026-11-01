@@ -19,6 +19,7 @@ import com.example.sporty.user.users.domain.entity.UserStatus;
 import com.example.sporty.user.users.repository.UserRepository;
 import com.example.sporty.user.withdrawal.service.WithdrawalSagaService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -58,7 +59,13 @@ public class UserService {
         UserEntity userEntity =
                 UserSignUpRequestDto.toUserEntity(request, encodedPassword);
 
-        UserEntity savedUser = userRepository.save(userEntity);
+        // 위 중복 검사를 동시에 통과한 같은 이메일 가입은 DB 유니크 제약(email)에서 걸린다 → 500 대신 409
+        UserEntity savedUser;
+        try {
+            savedUser = userRepository.saveAndFlush(userEntity);
+        } catch (DataIntegrityViolationException e) {
+            throw new DuplicateEmailException();
+        }
 
         // 3. 프로필 생성
         ProfileEntity profileEntity = ProfileEntity.builder()
@@ -66,7 +73,13 @@ public class UserService {
                 .district(request.getDistrict())
                 .user(savedUser)
                 .build();
-        ProfileEntity savedProfile = profileRepository.save(profileEntity);
+        // 닉네임도 같은 이유로 프로필 유니크 제약(nickname)에서 걸리면 409
+        ProfileEntity savedProfile;
+        try {
+            savedProfile = profileRepository.saveAndFlush(profileEntity);
+        } catch (DataIntegrityViolationException e) {
+            throw new DuplicateNicknameException();
+        }
 
         // 4. 선호 종목 생성
         for (SportType sportType : request.getSportTypes().stream().distinct().toList()) {

@@ -16,7 +16,9 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class AiMetrics {
 
+    public static final String TYPE_SEARCH = "search";
     public static final String TYPE_DRAFT = "draft";
+    public static final String TYPE_RECOMMEND = "recommend";
     public static final String OUTCOME_SUCCESS = "success";
     public static final String OUTCOME_FALLBACK = "fallback";
     public static final String OUTCOME_ERROR = "error";

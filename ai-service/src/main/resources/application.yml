@@ -21,6 +21,15 @@ spring:
       # 프론트 요청 제한(15초) 안에 끝나도록 재시도하지 않는다(기본 10회).
       max-attempts: 1
 
+  cloud:
+    openfeign:
+      client:
+        config:
+          default:
+            # match·user 호출이 느리면 빨리 실패하고 Fallback으로 넘어간다.
+            connect-timeout: 2000
+            read-timeout: 3000
+
 # LLM 호출 타임아웃. 넘으면 초안은 503, 검색·추천은 Fallback으로 응답한다.
 ai:
   llm:

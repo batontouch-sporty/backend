@@ -1,0 +1,57 @@
+name: Compose 기동 시험
+
+# 서비스별 테스트로 못 잡는 스키마·설정 누락을 찾으려고 빈 볼륨에서 전체를 띄운다.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: compose-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: Compose 전체 기동
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 시험용 .env 생성
+        run: |
+          for name in MARIADB_ROOT_PASSWORD USER_APP_PASSWORD MATCH_APP_PASSWORD \
+                      FACILITY_APP_PASSWORD NOTIFICATION_APP_PASSWORD GRAFANA_ADMIN_PASSWORD; do
+            echo "$name=$(openssl rand -hex 16)"
+          done > .env
+          echo "JWT_SECRET_KEY=$(openssl rand -hex 32)" >> .env
+
+      - name: 전체 빌드·기동
+        run: docker compose up -d --build --wait --wait-timeout 480
+
+      - name: Gateway 경유 서비스 확인
+        run: |
+          for service in user match facility ai notification; do
+            url="http://127.0.0.1:8000/$service-service/actuator/health"
+            # Eureka 등록 전에는 Gateway가 503을 줄 수 있다.
+            for attempt in $(seq 1 30); do
+              curl -fs "$url" > /dev/null && break
+              [ "$attempt" -eq 30 ] && { echo "::error::$service-service health 실패"; exit 1; }
+              sleep 3
+            done
+          done
+
+      - name: 실패 로그
+        if: failure()
+        run: |
+          docker compose ps -a
+          docker compose logs --tail=80
+
+      - name: 정리
+        if: always()
+        run: docker compose down -v

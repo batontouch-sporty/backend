@@ -3,17 +3,18 @@ package com.example.sporty.user.admin.service;
 import com.example.sporty.user.profiles.domain.entity.District;
 import com.example.sporty.user.profiles.domain.entity.ProfileEntity;
 import com.example.sporty.user.profiles.repository.ProfileRepository;
+import com.example.sporty.user.users.domain.dto.UserSignUpRequestDto;
 import com.example.sporty.user.users.domain.entity.Gender;
 import com.example.sporty.user.users.domain.entity.Role;
 import com.example.sporty.user.users.domain.entity.UserEntity;
 import com.example.sporty.user.users.repository.UserRepository;
+import jakarta.validation.Validator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.regex.Pattern;
 
 /**
  * 개발·시연용 관리자 초기 계정을 만든다(명세 A1 비고 "관리자 계정은 초기 데이터로 만든다").
@@ -29,12 +30,10 @@ public class AdminAccountService {
     static final District DEFAULT_DISTRICT = District.JUNG;
     static final Gender DEFAULT_GENDER = Gender.MALE;
 
-    // 가입(A1) 검증과 같은 기준: 이메일 형식·50자 이하, 비밀번호 8~20자, 닉네임 50자 이하
-    private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
-
     private final UserRepository userRepository;
     private final ProfileRepository profileRepository;
     private final PasswordEncoder passwordEncoder;
+    private final Validator validator;
 
     public enum Result { CREATED, SKIPPED_NOT_CONFIGURED, SKIPPED_INVALID, SKIPPED_EXISTS, SKIPPED_NICKNAME_TAKEN }
 
@@ -49,9 +48,11 @@ public class AdminAccountService {
         String trimmedEmail = email.trim();
         String trimmedNickname = isBlank(nickname) ? DEFAULT_NICKNAME : nickname.trim();
 
-        // 2. 가입과 같은 기준으로 검사. 맞지 않으면 기동은 계속하고 경고만 남긴다.
-        if (trimmedEmail.length() > 50 || !EMAIL.matcher(trimmedEmail).matches()
-                || password.length() < 8 || password.length() > 20 || trimmedNickname.length() > 50) {
+        // 2. 가입(A1) DTO의 검증 규칙을 그대로 쓴다(이메일 @Email·50자, 비밀번호 8~20자, 닉네임 50자).
+        //    규칙을 따로 두면 가입·로그인에서 거부되는 값으로 계정이 만들어져 로그인할 수 없게 될 수 있다.
+        //    맞지 않으면 기동은 계속하고 경고만 남긴다.
+        if (!signUpRuleValid("email", trimmedEmail) || !signUpRuleValid("password", password)
+                || !signUpRuleValid("nickname", trimmedNickname)) {
             log.warn("관리자 초기 계정 값이 가입 규칙(이메일 형식·50자, 비밀번호 8~20자, 닉네임 50자)에 맞지 않아 만들지 않음: email={}",
                     trimmedEmail);
             return Result.SKIPPED_INVALID;
@@ -89,6 +90,10 @@ public class AdminAccountService {
 
         log.info("관리자 초기 계정 생성: userId={}, email={}", admin.getId(), trimmedEmail);
         return Result.CREATED;
+    }
+
+    private boolean signUpRuleValid(String field, String value) {
+        return validator.validateValue(UserSignUpRequestDto.class, field, value).isEmpty();
     }
 
     private static boolean isBlank(String value) {

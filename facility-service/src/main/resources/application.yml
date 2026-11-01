@@ -5,7 +5,37 @@ spring:
   application:
     name: facility-service
   config:
-    import: optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}
+    # 로컬 실행 때는 저장소 루트의 .env(docker compose와 같은 파일)에서 DB 비밀번호·포트를 읽는다.
+    import:
+      - optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}
+      - optional:file:./.env[.properties]
+      - optional:file:../.env[.properties]
+  datasource:
+    driver-class-name: org.mariadb.jdbc.Driver
+    url: jdbc:mariadb://${FACILITY_DB_HOST:localhost}:${MARIADB_HOST_PORT:3306}/facility_db
+    username: ${FACILITY_DB_USERNAME:facility_app}
+    password: ${FACILITY_APP_PASSWORD}
+  jpa:
+    # 테이블 명세(R7) 적용 방식이 정해지면 validate로 바꾼다.
+    hibernate:
+      ddl-auto: ${FACILITY_DB_DDL_AUTO:update}
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MariaDBDialect
+
+facility:
+  openapi:
+    # 키가 비어 있으면 동기화만 건너뛰고 서비스는 정상 기동한다(DB에 있는 데이터로 조회).
+    service-key: ${PUBLIC_DATA_API_KEY:}
+    base-url: ${PUBLIC_DATA_API_URL:http://openapi.seoul.go.kr:8088}
+    service-name: ListPublicReservationSport
+    data-type: json
+  sync:
+    cron: "0 0 3 * * *"
+    zone: "Asia/Seoul"
+    # 기동 시 시설 테이블이 비어 있으면 한 번 동기화한다.
+    on-startup: ${FACILITY_SYNC_ON_STARTUP:true}
 
 eureka:
   instance:

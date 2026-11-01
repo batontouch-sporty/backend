@@ -1,0 +1,13 @@
+**/.env*
+.git
+.github
+.gradle
+**/build
+**/bin
+**/src/test
+**/Dockerfile
+legacy-sporty/src
+docker
+docs
+monitoring
+scripts

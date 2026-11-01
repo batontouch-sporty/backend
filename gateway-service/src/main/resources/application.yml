@@ -5,11 +5,24 @@ spring:
   application:
     name: gateway-service
   config:
-    import: optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}
+    # 로컬 실행 때는 저장소 루트의 .env(docker compose와 같은 파일)에서 JWT 비밀값을 읽는다.
+    import:
+      - optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}
+      - optional:file:../.env[.properties]
+      - optional:file:./.env[.properties]
   cloud:
     gateway:
       server:
         webflux:
+          # 프론트는 쿠키 없이 Authorization 헤더로만 인증하므로 allow-credentials는 켜지 않는다.
+          globalcors:
+            # Method 조건이 있는 라우트는 OPTIONS가 걸리지 않아 사전 요청이 403이 되므로 라우트 밖에서도 CORS를 처리한다.
+            add-to-simple-url-handler-mapping: true
+            cors-configurations:
+              '[/**]':
+                allowed-origins: ${CORS_ALLOWED_ORIGIN:http://localhost:3000}
+                allowed-methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
+                allowed-headers: [Authorization, Content-Type]
           routes:
             - id: user-service
               uri: lb://USER-SERVICE
@@ -41,6 +54,23 @@ spring:
                 - Path=/notification-service/**
               filters:
                 - RewritePath=/notification-service/(?<segment>.*), /$\{segment}
+            # 조회 두 경로만 연다. 나머지 Prometheus API는 라우트가 없어 Gateway에서 404로 끝난다.
+            - id: prometheus
+              uri: ${PROMETHEUS_URL:http://localhost:9090}
+              predicates:
+                - Path=/prometheus/api/v1/query,/prometheus/api/v1/query_range,false
+                - Method=GET
+              filters:
+                - RewritePath=/prometheus/(?<segment>.*), /$\{segment}
+                # Prometheus는 토큰과 회원 정보를 쓰지 않으므로 넘기지 않는다.
+                - RemoveRequestHeader=Authorization
+                - RemoveRequestHeader=X-User-Id
+                - RemoveRequestHeader=X-User-Role
+                # Origin을 넘기면 Prometheus도 CORS 헤더를 붙여 응답에 값이 2개가 되고 브라우저가 거부한다.
+                - RemoveRequestHeader=Origin
+
+jwt:
+  secret: ${JWT_SECRET_KEY}
 
 eureka:
   instance:

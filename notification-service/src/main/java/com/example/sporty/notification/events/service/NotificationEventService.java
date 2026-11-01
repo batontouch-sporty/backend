@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.regex.Pattern;
 
 // 매치 이벤트를 받아 알림을 저장한다. 알림 대상은 이벤트에 담겨 오므로 다른 서비스를 부르지 않는다.
 @Slf4j
@@ -28,6 +29,7 @@ public class NotificationEventService {
     private static final int TITLE_MAX = 100;
     private static final int BODY_MAX = 500;
     private static final String WITHDRAWAL_TITLE = "회원 탈퇴";
+    private static final Pattern CODE_LIKE = Pattern.compile("[A-Z0-9_]+");
 
     private final NotificationRepository notificationRepository;
     private final ProcessedEventRepository processedEventRepository;
@@ -55,7 +57,7 @@ public class NotificationEventService {
         saveAll(event.eventId(), KafkaTopics.MATCH_JOINED, notifications);
     }
 
-    // match.status-changed.v1 → 마감(CLOSED)·취소(CANCELLED)일 때만 참가자에게 알림
+    // match.status-changed.v1 → 마감(CLOSED)은 방장에게, 취소(CANCELLED)는 참가자에게 알림. 그 외 상태는 처리 기록만 남긴다.
     @Transactional
     public void handleMatchStatusChanged(MatchStatusChangedEvent event) {
         requireEventId(event.eventId());
@@ -63,26 +65,30 @@ public class NotificationEventService {
             return;
         }
 
-        String message = switch (Objects.requireNonNullElse(event.to(), "")) {
+        String to = Objects.requireNonNullElse(event.to(), "");
+        List<Long> recipients = switch (to) {
+            case "CLOSED" -> ownerOnly(event);
+            case "CANCELLED" -> event.participantIds() == null ? List.of() : event.participantIds();
+            default -> List.of();
+        };
+        String message = switch (to) {
             case "CLOSED" -> quote(event.title()) + "모임 모집이 마감됐어요";
             case "CANCELLED" -> quote(event.title()) + "모임이 취소됐어요" + reasonSuffix(event.reason());
             default -> null;
         };
 
         List<NotificationEntity> notifications = new ArrayList<>();
-        if (message != null && event.participantIds() != null) {
-            for (Long recipient : new LinkedHashSet<>(event.participantIds())) {
-                if (recipient != null) {
-                    notifications.add(build(event.eventId(), recipient, NotificationType.STATUS_CHANGED,
-                            event.title(), message, event.matchId()));
-                }
+        for (Long recipient : new LinkedHashSet<>(recipients)) {
+            if (recipient != null) {
+                notifications.add(build(event.eventId(), recipient, NotificationType.STATUS_CHANGED,
+                        event.title(), message, event.matchId()));
             }
         }
 
         saveAll(event.eventId(), KafkaTopics.MATCH_STATUS_CHANGED, notifications);
     }
 
-    // match.withdrawal-rejected.v1 → 탈퇴를 요청한 회원에게 알림
+    // match.withdrawal-rejected.v1 → 탈퇴를 요청한 회원에게 거절 사유별 알림
     @Transactional
     public void handleWithdrawalRejected(WithdrawalRejectedEvent event) {
         requireEventId(event.eventId());
@@ -93,10 +99,29 @@ public class NotificationEventService {
         List<NotificationEntity> notifications = new ArrayList<>();
         if (event.userId() != null) {
             notifications.add(build(event.eventId(), event.userId(), NotificationType.WITHDRAWAL_REJECTED,
-                    WITHDRAWAL_TITLE, "진행 중인 모임이 있어 탈퇴할 수 없어요", null));
+                    WITHDRAWAL_TITLE, withdrawalRejectedMessage(event.reason()), null));
         }
 
         saveAll(event.eventId(), KafkaTopics.MATCH_WITHDRAWAL_REJECTED, notifications);
+    }
+
+    // 마감 알림은 방장 한 명에게만 보낸다. ownerId가 없으면 보낼 대상을 알 수 없어 기록만 남긴다.
+    private List<Long> ownerOnly(MatchStatusChangedEvent event) {
+        if (event.ownerId() == null) {
+            log.warn("ownerId가 없는 마감 이벤트라 알림을 보내지 않음: eventId={}, matchId={}",
+                    event.eventId(), event.matchId());
+            return List.of();
+        }
+        return List.of(event.ownerId());
+    }
+
+    // 거절 코드는 회원에게 그대로 보이지 않게 문구로 바꾼다. 모르는 코드는 일반 문구로 보낸다.
+    private static String withdrawalRejectedMessage(String reason) {
+        return switch (Objects.requireNonNullElse(reason, "")) {
+            case "OWNER_OF_IN_PROGRESS_MATCH" -> "진행 중인 모임이 있어 탈퇴할 수 없어요";
+            case "DEADLINE_EXCEEDED" -> "탈퇴 처리 시간이 지나 탈퇴가 취소됐어요. 잠시 후 다시 시도해 주세요";
+            default -> "탈퇴 요청을 처리하지 못했어요. 잠시 후 다시 시도해 주세요";
+        };
     }
 
     // eventId가 없으면 중복을 가릴 수 없어 처리하지 않는다(재시도 없이 DLT로 간다).
@@ -140,8 +165,12 @@ public class NotificationEventService {
         return current == null || max == null ? "" : " (" + current + "/" + max + ")";
     }
 
+    // 사유는 매치 서비스가 보낸 한국어 문구만 붙인다. USER_WITHDRAWAL 같은 코드 값은 회원에게 보이지 않게 뺀다.
     private static String reasonSuffix(String reason) {
-        return reason == null || reason.isBlank() ? "" : " (사유: " + reason + ")";
+        if (reason == null || reason.isBlank() || CODE_LIKE.matcher(reason.strip()).matches()) {
+            return "";
+        }
+        return " (사유: " + reason.strip() + ")";
     }
 
     private static String cut(String value, int max) {

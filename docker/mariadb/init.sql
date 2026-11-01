@@ -9,7 +9,7 @@ CREATE USER IF NOT EXISTS 'match_app'@'%' IDENTIFIED BY '${MATCH_APP_PASSWORD}';
 CREATE USER IF NOT EXISTS 'facility_app'@'%' IDENTIFIED BY '${FACILITY_APP_PASSWORD}';
 CREATE USER IF NOT EXISTS 'notification_app'@'%' IDENTIFIED BY '${NOTIFICATION_APP_PASSWORD}';
 
-GRANT ALL PRIVILEGES ON `user_db`.* TO 'user_app'@'%';
-GRANT ALL PRIVILEGES ON `match_db`.* TO 'match_app'@'%';
-GRANT ALL PRIVILEGES ON `facility_db`.* TO 'facility_app'@'%';
-GRANT ALL PRIVILEGES ON `notification_db`.* TO 'notification_app'@'%';
+GRANT SELECT, INSERT, UPDATE, DELETE ON `user_db`.* TO 'user_app'@'%';
+GRANT SELECT, INSERT, UPDATE, DELETE ON `match_db`.* TO 'match_app'@'%';
+GRANT SELECT, INSERT, UPDATE, DELETE ON `facility_db`.* TO 'facility_app'@'%';
+GRANT SELECT, INSERT, UPDATE, DELETE ON `notification_db`.* TO 'notification_app'@'%';

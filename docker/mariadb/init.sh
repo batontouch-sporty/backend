@@ -24,7 +24,8 @@ if sed \
   -e "s|\${FACILITY_APP_PASSWORD}|$FACILITY_APP_PASSWORD|" \
   -e "s|\${NOTIFICATION_APP_PASSWORD}|$NOTIFICATION_APP_PASSWORD|" \
   /init/init.sql > "$rendered" \
-  && MYSQL_PWD="$MARIADB_ROOT_PASSWORD" mariadb -uroot < "$rendered"; then
+  && MYSQL_PWD="$MARIADB_ROOT_PASSWORD" mariadb -uroot < "$rendered" \
+  && MYSQL_PWD="$MARIADB_ROOT_PASSWORD" mariadb -uroot --default-character-set=utf8mb4 < /init/schema.sql; then
   :
 else
   status=$?

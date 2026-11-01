@@ -27,6 +27,8 @@ docker compose up -d mariadb redis kafka    # 인프라만
 
 호스트에 열리는 앱 포트는 Gateway 8000뿐이고 127.0.0.1에만 바인딩합니다. 기동 직후 약 1분은 Gateway가 503을 줄 수 있습니다.
 
+DB 스키마는 MariaDB 볼륨이 비어 있을 때만 `docker/mariadb/`의 스크립트로 만들어집니다. 기존 볼륨이 있으면 `docker compose down -v`로 지운 뒤 다시 올립니다(DB 데이터가 모두 삭제됩니다).
+
 ## Zipkin 로컬 실행
 
 처음 실행할 때는 예시 파일을 복사해 로컬 환경변수 파일을 준비합니다. 기존 `.env`가 있다면 덮어쓰지 말고 `ZIPKIN_HOST_PORT=9411`만 추가합니다. `JWT_SECRET_KEY`가 비어 있으면 `openssl rand -base64 48`의 출력값을 직접 넣습니다. `.env`는 Git에 커밋하지 않습니다.

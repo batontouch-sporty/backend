@@ -62,6 +62,7 @@ services:
       # 개발·시연용 관리자 초기 계정. 비어 있으면 만들지 않고 정상 기동한다.
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_NICKNAME: ${ADMIN_NICKNAME:-}
 
   match-service:
     <<: *app

@@ -71,6 +71,7 @@ services:
       <<: *app-env
       MATCH_DB_HOST: mariadb
       MATCH_APP_PASSWORD: ${MATCH_APP_PASSWORD:?}
+      MATCH_WITHDRAWAL_ENABLED: "true"
 
   facility-service:
     <<: *app
@@ -107,6 +108,7 @@ services:
     volumes:
       - mariadb-data:/var/lib/mysql
       - ./docker/mariadb/init.sql:/init/init.sql:ro
+      - ./docker/mariadb/schema.sql:/init/schema.sql:ro
       - ./docker/mariadb/init.sh:/docker-entrypoint-initdb.d/init.sh:ro
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]

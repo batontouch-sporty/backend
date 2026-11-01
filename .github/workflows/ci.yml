@@ -89,6 +89,7 @@ jobs:
           mariadb_id=${{ job.services.mariadb.id }}
           docker exec "$mariadb_id" mkdir -p /init
           docker cp docker/mariadb/init.sql "$mariadb_id":/init/init.sql
+          docker cp docker/mariadb/schema.sql "$mariadb_id":/init/schema.sql
           docker cp docker/mariadb/init.sh "$mariadb_id":/init/init.sh
           docker exec \
             -e MARIADB_ROOT_PASSWORD=ci-root \

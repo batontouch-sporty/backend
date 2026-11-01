@@ -16,9 +16,8 @@ spring:
     username: ${NOTIFICATION_DB_USERNAME:notification_app}
     password: ${NOTIFICATION_APP_PASSWORD}
   jpa:
-    # 테이블 명세(R4) 적용 방식이 정해지면 validate로 바꾼다.
     hibernate:
-      ddl-auto: ${NOTIFICATION_DB_DDL_AUTO:update}
+      ddl-auto: ${NOTIFICATION_DB_DDL_AUTO:validate}
     open-in-view: false
     properties:
       hibernate:

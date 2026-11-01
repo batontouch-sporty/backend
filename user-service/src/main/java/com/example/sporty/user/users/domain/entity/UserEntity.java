@@ -72,14 +72,27 @@ public class UserEntity {
     private ProfileEntity profileEntity;
 
 
-    // [USR-04] 회원탈퇴
-    // 이미 탈퇴한 회원이 남은 Access Token으로 다시 요청해도 처음 탈퇴 시각을 유지한다.
-    public void withdraw() {
+    // [USR-04] 탈퇴 접수: ACTIVE → WITHDRAWING. 이 동안 로그인·토큰 재발급·매치 참가가 막힌다.
+    public void startWithdrawal() {
+        this.status = UserStatus.WITHDRAWING;
+    }
+
+    // [USR-04] 매치 정리 완료(CLEANED) → WITHDRAWN
+    // 이미 탈퇴한 회원이면 처음 탈퇴 시각을 유지한다.
+    public void completeWithdrawal() {
         if (this.status == UserStatus.WITHDRAWN) {
             return;
         }
         this.status = UserStatus.WITHDRAWN;
         this.withdrawnAt = new Date();
+    }
+
+    // [USR-04] 거절(REJECTED)·시간 초과(TIMED_OUT) 보상: WITHDRAWING → ACTIVE
+    // 탈퇴 중일 때만 되돌린다. 이미 탈퇴한 회원을 살리지 않는다.
+    public void restoreFromWithdrawing() {
+        if (this.status == UserStatus.WITHDRAWING) {
+            this.status = UserStatus.ACTIVE;
+        }
     }
 
 }

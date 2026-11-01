@@ -73,12 +73,15 @@ public class MatchCrudService {
                                 filters.add(cb.equal(root.get("facilityId"), q.serviceId()));
                             if (q.titleKeyword() != null)
                                 filters.add(
-                                        cb.like(root.get("title"), like(q.titleKeyword()), '!'));
+                                        cb.like(
+                                                cb.lower(root.get("title")),
+                                                like(q.titleKeyword().toLowerCase(Locale.ROOT)),
+                                                '!'));
                             if (q.descriptionKeyword() != null)
                                 filters.add(
                                         cb.like(
-                                                root.get("description"),
-                                                like(q.descriptionKeyword()),
+                                                cb.lower(root.get("description")),
+                                                like(q.descriptionKeyword().toLowerCase(Locale.ROOT)),
                                                 '!'));
                             if (q.startAt() != null)
                                 filters.add(
@@ -94,7 +97,11 @@ public class MatchCrudService {
                             if (q.genderGroup() != null)
                                 filters.add(cb.equal(root.get("genderGroup"), q.genderGroup()));
                             if (q.region() != null)
-                                filters.add(cb.equal(root.get("region"), q.region()));
+                                filters.add(
+                                        cb.like(
+                                                cb.lower(root.get("region")),
+                                                like(q.region().toLowerCase(Locale.ROOT)),
+                                                '!'));
                             if (q.isFree() != null)
                                 filters.add(cb.equal(root.get("isFree"), q.isFree()));
                             if (q.status() != null)

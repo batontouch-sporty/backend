@@ -211,6 +211,12 @@ class MatchCrudDraftTest {
                 .andExpect(jsonPath("$[0].matchId").value(hidden));
         mvc.perform(get("/api/matches").param("titleKeyword", "%"))
                 .andExpect(jsonPath("$.length()").value(0));
+        mvc.perform(get("/api/matches").param("titleKeyword", "draft"))
+                .andExpect(jsonPath("$[0].matchId").value(id));
+        mvc.perform(get("/api/matches").param("descriptionKeyword", "DESCRIPTION"))
+                .andExpect(jsonPath("$[0].matchId").value(id));
+        mvc.perform(get("/api/matches").param("region", "송파"))
+                .andExpect(jsonPath("$[0].matchId").value(id));
         verify(checks, never()).profiles(anyList());
     }
 

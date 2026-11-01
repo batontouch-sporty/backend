@@ -42,6 +42,7 @@ class ParticipationTest {
     @Autowired ParticipationService service;
     @Autowired MockMvc mvc;
     @MockitoBean MatchRemoteChecks checks;
+    @MockitoBean ParticipationEvents events;
 
     @MockitoBean(name = "participationMemberLocks")
     MemberLocks locks;

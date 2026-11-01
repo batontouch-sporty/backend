@@ -17,16 +17,19 @@ public class ParticipationService {
     private final MatchParticipantRepository participants;
     private final MatchRemoteChecks checks;
     private final MemberLocks locks;
+    private final ParticipationEvents events;
 
     public ParticipationService(
             MatchRepository matches,
             MatchParticipantRepository participants,
             MatchRemoteChecks checks,
-            @Qualifier("participationMemberLocks") MemberLocks locks) {
+            @Qualifier("participationMemberLocks") MemberLocks locks,
+            ParticipationEvents events) {
         this.matches = matches;
         this.participants = participants;
         this.checks = checks;
         this.locks = locks;
+        this.events = events;
     }
 
     public record Participation(
@@ -55,8 +58,12 @@ public class ParticipationService {
                 participants.saveAndFlush(
                         new MatchParticipantEntity(
                                 match, userId, MatchParticipantRole.PARTICIPANT));
-        if (participants.countByMatch_Id(matchId) >= match.getMaxParticipant())
+        long current = participants.countByMatch_Id(matchId);
+        events.joined(match, userId, current);
+        if (current >= match.getMaxParticipant()) {
             match.closeRecruitment(now());
+            events.statusChanged(match, MatchStatus.RECRUITING, "정원 도달로 모집 마감");
+        }
         return new Participation(participant.getId(), matchId, userId, participant.getRole());
     }
 
@@ -88,8 +95,10 @@ public class ParticipationService {
         var now = now();
         if (match.getStatus() == MatchStatus.CLOSED
                 && match.getStartAt().isAfter(now)
-                && participants.countByMatch_Id(matchId) < match.getMaxParticipant())
+                && participants.countByMatch_Id(matchId) < match.getMaxParticipant()) {
             match.reopenRecruitment(now);
+            events.statusChanged(match, MatchStatus.CLOSED, "참가 취소로 모집 재개");
+        }
     }
 
     private static LocalDateTime now() {

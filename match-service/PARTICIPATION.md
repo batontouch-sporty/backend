@@ -8,7 +8,7 @@ POST `/api/matches/{matchId}/participants`는 201 참가 정보를, DELETE `/api
 
 방장은 참가 취소할 수 없다. CANCELLED·COMPLETED에서는 400 MATCH_LEAVE_NOT_ALLOWED로 거절해 참가 이력을 보존한다. 일반 참가자는 IN_PROGRESS에서도 취소할 수 있다. 시작 전 CLOSED에서 빈자리가 생기면 RECRUITING으로 바꾸고 시작 후에는 상태를 유지한다. 회원 상태·성별은 #47로 병합된 MatchRemoteChecks로 확인한다.
 
-#10 CRUD 서비스와 공통 모델은 유지한다. 참가/상태 변경 Outbox는 #33, 대기자 승급은 #35에서 같은 트랜잭션에 연결한다.
+#10 CRUD 서비스와 공통 모델은 유지한다. #33으로 참가·모집 상태 변경 Outbox를 같은 트랜잭션에 연결했다. 이벤트 형식과 공용 발행기는 [OUTBOX.md](OUTBOX.md)를 참고한다. 대기자 승급은 #35에서 후속 연결한다.
 
 ## 검증
 

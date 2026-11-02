@@ -7,6 +7,7 @@ import com.example.sporty.user.commons.exception.users.PasswordMismatchException
 import com.example.sporty.user.commons.exception.users.UserNotFoundException;
 import com.example.sporty.user.commons.exception.users.WithdrawalInProgressException;
 import com.example.sporty.user.commons.util.SportType;
+import com.example.sporty.user.points.PointSettlementService;
 import com.example.sporty.user.profiles.domain.entity.ProfileEntity;
 import com.example.sporty.user.profiles.repository.ProfileRepository;
 import com.example.sporty.user.sportpreference.domain.entity.SportPreferenceEntity;
@@ -34,6 +35,7 @@ public class UserService {
     private final UserRepository userRepository;
     private final ProfileRepository profileRepository;
     private final SportPreferenceRepository sportPreferenceRepository;
+    private final PointSettlementService points;
     private final PasswordEncoder passwordEncoder;
     private final WithdrawalSagaService withdrawalSagaService;
 
@@ -66,6 +68,8 @@ public class UserService {
         } catch (DataIntegrityViolationException e) {
             throw new DuplicateEmailException();
         }
+
+        points.recordSignup(savedUser);
 
         // 3. 프로필 생성
         ProfileEntity profileEntity = ProfileEntity.builder()

@@ -135,8 +135,10 @@ class ParticipationTest {
 
     @Test
     void inconsistentRecruitingButFullMatchStillRejects() {
-        var m = match(1, false);
-        error(() -> service.join(m.getId(), 2L), 400, "MATCH_FULL");
+        var m = match(2, false);
+        participants.saveAndFlush(
+                new MatchParticipantEntity(m, 2, MatchParticipantRole.PARTICIPANT));
+        error(() -> service.join(m.getId(), 3L), 400, "MATCH_FULL");
     }
 
     @Test

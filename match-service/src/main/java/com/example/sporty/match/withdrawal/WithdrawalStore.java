@@ -64,6 +64,20 @@ public class WithdrawalStore {
             String role) {}
 
     public List<Match> lockMatches(long userId) {
+        // A13 locks a match before deleting its participant rows. Lock the same match rows
+        // first, in ID order, so a withdrawal never holds a participant row while waiting
+        // for the match row owned by a concurrent hard delete.
+        var matchIds =
+                jdbc.queryForList(
+                        "SELECT match_id FROM match_participants WHERE user_id=? ORDER BY match_id",
+                        Long.class,
+                        userId);
+        for (var matchId : matchIds) {
+            jdbc.queryForList(
+                    "SELECT id FROM matches WHERE id=? FOR UPDATE", Long.class, matchId);
+        }
+        // Re-read with a locking query: a delete can commit while the row lock is awaited.
+        // A consistent read could otherwise return that deleted membership under REPEATABLE READ.
         return jdbc.query(
                 "SELECT m.id,m.title,m.status,m.start_at,m.end_at,m.max_participant,p.role FROM"
                     + " matches m JOIN match_participants p ON p.match_id=m.id WHERE p.user_id=?"

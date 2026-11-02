@@ -153,7 +153,7 @@ CREATE TABLE match_db.matches (
   KEY idx_matches_sport_status_start (sport_type,status,start_at),
   KEY idx_matches_region_start (region,start_at),
   KEY idx_matches_facility (facility_id),
-  CONSTRAINT ck_matches_fields CHECK (CHAR_LENGTH(TRIM(title)) > 0 AND max_participant >= 1 AND end_at > start_at AND facility_id > 0),
+  CONSTRAINT ck_matches_fields CHECK (CHAR_LENGTH(TRIM(title)) > 0 AND max_participant >= 2 AND end_at > start_at AND facility_id > 0),
   CONSTRAINT ck_matches_status CHECK (status IN ('RECRUITING','CLOSED','IN_PROGRESS','COMPLETED','CANCELLED')),
   CONSTRAINT ck_matches_cancelled_at CHECK (status <> 'CANCELLED' OR cancelled_at IS NOT NULL),
   CONSTRAINT ck_matches_skill CHECK (skill_level IN ('BEGINNER','INTERMEDIATE','ADVANCED')),

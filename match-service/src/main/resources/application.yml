@@ -4,75 +4,14 @@ server:
 spring:
   application:
     name: match-service
-  cloud:
-    openfeign:
-      circuitbreaker:
-        enabled: true
-      client:
-        config:
-          matchMemberClient:
-            connectTimeout: ${MATCH_USER_CONNECT_TIMEOUT_MS:1000}
-            readTimeout: ${MATCH_USER_READ_TIMEOUT_MS:2000}
-          matchFacilityClient:
-            connectTimeout: ${MATCH_FACILITY_CONNECT_TIMEOUT_MS:1000}
-            readTimeout: ${MATCH_FACILITY_READ_TIMEOUT_MS:2000}
-  datasource:
-    url: jdbc:mariadb://${MATCH_DB_HOST:localhost}:${MARIADB_HOST_PORT:3306}/match_db
-    username: ${MATCH_DB_USERNAME:match_app}
-    password: ${MATCH_APP_PASSWORD}
-  jpa:
-    hibernate:
-      ddl-auto: ${MATCH_DB_DDL_AUTO:validate}
+  profiles:
+    # IDE 실행은 local. Compose는 dev, K8s는 prod를 SPRING_PROFILES_ACTIVE로 준다.
+    default: local
   config:
+    # 설정은 config-repo의 match-service.yml·match-service-<프로필>.yml에 있다. Config Server에 못 붙으면 기동하지 않는다.
+    # IDE 실행 전에 Compose로 config-service를 먼저 띄운다(docker compose up -d --wait config-service).
+    # 로컬 실행 때는 저장소 루트의 .env(docker compose와 같은 파일)에서 비밀값·포트를 읽는다.
     import:
-      - optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}
+      - configserver:${CONFIG_SERVER_URL:http://localhost:8888}
       - optional:file:./.env[.properties]
       - optional:file:../.env[.properties]
-
-eureka:
-  instance:
-    instance-id: ${spring.application.name}:${spring.cloud.client.ip-address}:${server.port}
-    prefer-ip-address: true
-  client:
-    service-url:
-      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka}
-
-management:
-  health:
-    db:
-      enabled: ${MATCH_DB_HEALTH_ENABLED:true}
-  endpoints:
-    web:
-      exposure:
-        include:
-          - health
-          - info
-
-match:
-  starting-soon:
-    enabled: ${MATCH_STARTING_SOON_ENABLED:true}
-    delay-ms: ${MATCH_STARTING_SOON_DELAY_MS:60000}
-    initial-delay-ms: ${MATCH_STARTING_SOON_INITIAL_DELAY_MS:60000}
-  withdrawal:
-    enabled: ${MATCH_WITHDRAWAL_ENABLED:false}
-  clients:
-    user:
-      url: ${MATCH_USER_SERVICE_URL:}
-    facility:
-      url: ${MATCH_FACILITY_SERVICE_URL:}
-
-resilience4j:
-  circuitbreaker:
-    configs:
-      default:
-        slidingWindowSize: 10
-        minimumNumberOfCalls: 5
-        failureRateThreshold: 50
-        waitDurationInOpenState: 10s
-        permittedNumberOfCallsInHalfOpenState: 2
-        ignoreExceptions:
-          - feign.FeignException$NotFound
-  timelimiter:
-    configs:
-      default:
-        timeoutDuration: 3s

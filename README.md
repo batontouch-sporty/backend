@@ -25,7 +25,18 @@ docker compose up -d --build --wait         # 전체
 docker compose up -d mariadb redis kafka    # 인프라만
 ```
 
-호스트에 열리는 앱 포트는 Gateway 8000뿐이고 127.0.0.1에만 바인딩합니다. 기동 직후 약 1분은 Gateway가 503을 줄 수 있습니다.
+호스트에 열리는 앱 포트는 기본값 기준 Gateway 8000과 Config Server 8888이고(`.env`의 `GATEWAY_HOST_PORT`·`CONFIG_HOST_PORT`로 변경), 127.0.0.1에만 바인딩합니다. 기동 직후 약 1분은 Gateway가 503을 줄 수 있습니다.
+
+### 설정과 IDE 실행
+
+서비스 설정은 [config-repo](https://github.com/batontouch-sporty/config-repo)에 있고, 각 서비스의 `application.yml`에는 이름·포트·기본 프로필(`local`)·Config 주소만 있습니다(ai-service는 OpenAI 키 기본값도 둡니다). 서비스는 Config Server에 붙지 못하면 기동하지 않습니다. 설정을 바꿀 때는 config-repo에 PR을 올립니다.
+
+IDE에서 서비스를 띄울 때는 Compose로 인프라와 config-service를 먼저 띄웁니다. 프로필을 따로 주지 않으면 `local`로 뜨고 `.env`의 포트로 붙습니다. Compose의 discovery-service는 호스트에 포트를 열지 않아서, IDE로 띄운 서비스는 Eureka에 등록되지 않습니다. 단독 기동과 자기 API 확인까지만 됩니다.
+
+```bash
+docker compose up -d --wait mariadb redis kafka zipkin config-service
+./gradlew :user-service:bootRun
+```
 
 DB 스키마는 MariaDB 볼륨이 비어 있을 때만 `docker/mariadb/`의 스크립트로 만들어집니다. 기존 볼륨이 있으면 `docker compose down -v`로 지운 뒤 다시 올립니다(DB 데이터가 모두 삭제됩니다).
 

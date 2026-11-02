@@ -21,7 +21,7 @@
 
 ## 프로필과 설정
 
-팀 프로필 규칙은 `local=IDE`, `dev=Compose`, `prod=Kubernetes`이다. 따라서 Deployment는 ConfigMap에서 `SPRING_PROFILES_ACTIVE=prod`를 주입한다. `config-repo`의 `application-prod.yml`도 클러스터 내부 Eureka 기본 주소를 `http://discovery-service:8761/eureka`로 정의하고 있어 이 Service 이름과 일치한다.
+팀 프로필 규칙은 `local=IDE`, `dev=Compose`, `prod=Kubernetes`이다. 따라서 Deployment는 ConfigMap에서 `SPRING_PROFILES_ACTIVE=prod`를 주입한다. `config-repo`의 서비스별 `<서비스명>-prod.yml`도 클러스터 내부 Eureka 기본 주소를 `http://discovery-service:8761/eureka`로 정의하고 있어 이 Service 이름과 일치한다.
 
 Discovery는 현재 애플리케이션 설정에서 포트 `8761`을 사용하고, Eureka 서버 자신을 등록하거나 레지스트리를 가져오지 않도록 구성되어 있다. Discovery 단독 기동에 필요하지 않은 DB·Redis·Kafka·JWT 설정은 ConfigMap에 포함하지 않았다.
 

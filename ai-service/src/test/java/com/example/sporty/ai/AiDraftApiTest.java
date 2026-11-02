@@ -169,10 +169,16 @@ class AiDraftApiTest {
     void 매치_정보를_못_찾으면_400_AI_DRAFT_INSUFFICIENT() throws Exception {
         // 도구가 호출되지 않으면 AI의 안내 문장이 그대로 온다
         when(draftChat.call(anyString(), anyString())).thenReturn("어떤 매치를 만들고 싶으신가요?");
+        double successBefore = count("success");
+        double rejectedBefore = count("rejected");
 
         requestDraft("안녕하세요")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("AI_DRAFT_INSUFFICIENT"));
+
+        // 400은 성공률에 섞지 않고 rejected로 따로 센다
+        assertThat(count("rejected")).isEqualTo(rejectedBefore + 1);
+        assertThat(count("success")).isEqualTo(successBefore);
     }
 
     @Test

@@ -1,6 +1,7 @@
 package com.example.sporty.ai;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.hamcrest.Matchers.hasSize;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -25,6 +26,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
+import com.example.sporty.ai.agent.MatchSearchAiAgent;
 import com.example.sporty.ai.agent.SearchChat;
 import com.example.sporty.ai.client.MatchClient;
 import com.example.sporty.ai.client.dto.MatchDto;
@@ -33,6 +35,9 @@ import com.example.sporty.ai.domain.enums.GenderGroup;
 import com.example.sporty.ai.domain.enums.MatchStatus;
 import com.example.sporty.ai.domain.enums.SportType;
 import com.fasterxml.jackson.databind.ObjectMapper;
+
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 
 /**
  * A22 자연어 매치 검색. LLM(SearchChat)과 match-service(MatchClient)는 목으로 바꿔 외부 호출이 없다.
@@ -43,6 +48,8 @@ class AiSearchApiTest {
 
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;
+    @Autowired MeterRegistry registry;
+    @Autowired MatchSearchAiAgent searchAgent;
 
     @MockitoBean SearchChat searchChat;
     @MockitoBean MatchClient matchClient;
@@ -151,5 +158,35 @@ class AiSearchApiTest {
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.code").value("AI_UNAVAILABLE"))
                 .andExpect(jsonPath("$.message").value("매치 목록을 불러오지 못했습니다. 잠시 후 다시 시도해주세요."));
+    }
+
+    double count(String outcome) {
+        Timer timer = registry.find("ai.request").tag("type", "search").tag("outcome", outcome).timer();
+        return timer == null ? 0 : timer.count();
+    }
+
+    @Test
+    void 조건을_못_찾은_400은_success가_아니라_rejected로_센다() throws Exception {
+        when(searchChat.call(anyString(), anyString())).thenReturn("어떤 매치를 찾으시나요?");
+        double successBefore = count("success");
+        double rejectedBefore = count("rejected");
+
+        search("안녕").andExpect(status().isBadRequest());
+
+        assertThat(count("rejected")).isEqualTo(rejectedBefore + 1);
+        assertThat(count("success")).isEqualTo(successBefore);
+    }
+
+    @Test
+    void 예상_못_한_예외도_error로_기록한다() {
+        when(searchChat.call(anyString(), anyString())).thenReturn("{\"sportType\":\"FUTSAL\"}");
+        when(matchClient.searchMatches(any())).thenThrow(new IllegalStateException("unexpected"));
+        double successBefore = count("success");
+        double errorBefore = count("error");
+
+        assertThatThrownBy(() -> searchAgent.search("풋살")).isInstanceOf(IllegalStateException.class);
+
+        assertThat(count("error")).isEqualTo(errorBefore + 1);
+        assertThat(count("success")).isEqualTo(successBefore);
     }
 }

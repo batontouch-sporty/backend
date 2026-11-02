@@ -9,7 +9,7 @@ import com.example.sporty.user.withdrawal.repository.ProcessedEventRepository;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.util.EnumSet;
+import java.util.EnumMap;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -60,17 +60,24 @@ public class PointSettlementService {
         UserEntity user = users.findForUpdate(cmd.userId()).orElseThrow(UserNotFoundException::new);
         if (processed.existsById(cmd.eventId())) return Result.of(Outcome.DUPLICATE);
         processed.save(new ProcessedEventEntity(cmd.eventId(), cmd.action().name()));
-        if (user.getStatus() == UserStatus.WITHDRAWN) return Result.of(Outcome.WITHDRAWN);
+        if (user.getStatus() == UserStatus.WITHDRAWN) {
+            return Result.of(cmd.action() == Action.CHARGE ? Outcome.USER_NOT_ACTIVE : Outcome.WITHDRAWN);
+        }
         LocalDateTime now = now();
         expire(user, now);
-        Set<PointHistory.Reason> reasons = EnumSet.noneOf(PointHistory.Reason.class);
+        var entries = new EnumMap<PointHistory.Reason, PointHistory>(PointHistory.Reason.class);
         for (PointHistory entry : history.findByRequestId(cmd.requestId().toString())) {
             if (entry.getUserId() != cmd.userId() || entry.getMatchId() != cmd.matchId()) {
                 throw new IllegalArgumentException("요청 ID의 회원 또는 매치가 다릅니다.");
             }
-            reasons.add(entry.getReason());
+            entries.put(entry.getReason(), entry);
         }
+        Set<PointHistory.Reason> reasons = entries.keySet();
         if (cmd.action() == Action.CHARGE) return charge(cmd, user, reasons, now);
+        // 매칭이 같은 반환을 새 이벤트로 요청하면 최초 실제 지급액을 다시 알려준다.
+        if (cmd.action() == Action.REFUND && entries.containsKey(DEPOSIT_RETURNED)) {
+            return new Result(Outcome.RETURNED, entries.get(DEPOSIT_RETURNED).getDelta(), null);
+        }
         if (reasons.contains(DEPOSIT_CANCELLED)) return Result.of(Outcome.CANCELLED_BEFORE_CHARGE);
         if (reasons.contains(DEPOSIT_RETURNED) || reasons.contains(NO_SHOW_FORFEITED)) {
             return Result.of(Outcome.ALREADY_SETTLED);
@@ -98,7 +105,7 @@ public class PointSettlementService {
 
     private Result charge(Command cmd, UserEntity user, Set<PointHistory.Reason> reasons, LocalDateTime now) {
         if (reasons.contains(DEPOSIT_CANCELLED)) return Result.of(Outcome.REQUEST_CANCELLED);
-        if (reasons.contains(DEPOSIT_CHARGED)) return Result.of(Outcome.DUPLICATE);
+        if (reasons.contains(DEPOSIT_CHARGED)) return Result.of(Outcome.CHARGED);
         // 거절은 잔액 이력이 없다. 재발급된 eventId로 같은 요청을 보내도 이전 거절 결정을 유지한다.
         String decisionId = "point-rejection:" + cmd.requestId();
         var previous = processed.findById(decisionId);

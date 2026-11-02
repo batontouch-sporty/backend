@@ -36,15 +36,41 @@ class PointSettlementTest {
     void redeliveryWithDifferentEventIdsChargesAndRefundsOnlyOnce() {
         long uid = member(50).getId();
         UUID request = UUID.randomUUID();
-        points.apply(command(uid, request, CHARGE));
-        points.apply(command(uid, request, CHARGE));
+        var firstCharge = command(uid, request, CHARGE);
+        assertThat(points.apply(firstCharge).outcome()).isEqualTo(Outcome.CHARGED);
+        assertThat(points.apply(firstCharge).outcome()).isEqualTo(Outcome.DUPLICATE);
+        assertThat(points.apply(command(uid, request, CHARGE)).outcome()).isEqualTo(Outcome.CHARGED);
         assertThat(read(uid).getPoints()).isEqualTo(40);
-        points.apply(command(uid, request, REFUND));
-        points.apply(command(uid, request, REFUND));
+        var firstRefund = command(uid, request, REFUND);
+        var returned = points.apply(firstRefund);
+        assertThat(returned.outcome()).isEqualTo(Outcome.RETURNED);
+        assertThat(returned.creditedPoints()).isEqualTo(10);
+        assertThat(points.apply(firstRefund).outcome()).isEqualTo(Outcome.DUPLICATE);
+        assertThat(points.apply(command(uid, request, REFUND))).isEqualTo(returned);
         assertThat(read(uid).getPoints()).isEqualTo(50);
         assertThat(history.findByRequestId(request.toString()))
                 .extracting(PointHistory::getReason)
                 .containsExactlyInAnyOrder(PointHistory.Reason.DEPOSIT_CHARGED, PointHistory.Reason.DEPOSIT_RETURNED);
+    }
+
+    @Test
+    @Transactional
+    void refundRetryReturnsOriginalCappedAmountAfterBalanceChanges() {
+        long uid = member(95).getId();
+        UUID deposit = UUID.randomUUID();
+        points.apply(command(uid, deposit, CHARGE));
+        for (int i = 0; i < 5; i++) {
+            UUID attendance = UUID.randomUUID();
+            points.apply(command(uid, attendance, CHARGE));
+            points.apply(command(uid, attendance, ATTENDED));
+        }
+        assertThat(read(uid).getPoints()).isEqualTo(95);
+        var first = points.apply(command(uid, deposit, REFUND));
+        assertThat(first.creditedPoints()).isEqualTo(5);
+        points.apply(command(uid, UUID.randomUUID(), CHARGE));
+        assertThat(points.apply(command(uid, deposit, REFUND))).isEqualTo(first);
+        assertThat(read(uid).getPoints()).isEqualTo(90);
+        assertThat(history.findByRequestId(deposit.toString())).hasSize(2);
     }
 
     @Test
@@ -146,6 +172,10 @@ class PointSettlementTest {
         assertThat(points.apply(command(uid, UUID.randomUUID(), CHARGE)).outcome()).isEqualTo(Outcome.USER_NOT_ACTIVE);
         member.completeWithdrawal();
         users.saveAndFlush(member);
+        var charge = command(uid, UUID.randomUUID(), CHARGE);
+        assertThat(points.apply(charge).outcome()).isEqualTo(Outcome.USER_NOT_ACTIVE);
+        assertThat(points.apply(charge).outcome()).isEqualTo(Outcome.DUPLICATE);
+        assertThat(history.findByRequestId(charge.requestId().toString())).isEmpty();
         var late = command(uid, UUID.randomUUID(), REFUND);
         assertThat(points.apply(late).outcome()).isEqualTo(Outcome.WITHDRAWN);
         assertThat(points.apply(late).outcome()).isEqualTo(Outcome.DUPLICATE);

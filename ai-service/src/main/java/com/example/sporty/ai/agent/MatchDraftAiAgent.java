@@ -2,12 +2,16 @@ package com.example.sporty.ai.agent;
 
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.List;
 
 import org.springframework.stereotype.Service;
 
+import com.example.sporty.ai.client.FacilityClient;
 import com.example.sporty.ai.commons.exception.AiException;
 import com.example.sporty.ai.domain.dto.AiDraftDto;
 import com.example.sporty.ai.domain.dto.AiDraftResponseDto;
+import com.example.sporty.ai.domain.dto.FacilityCandidateDto;
+import com.example.sporty.ai.domain.enums.District;
 import com.example.sporty.ai.domain.enums.GenderGroup;
 import com.example.sporty.ai.metrics.AiMetrics;
 import com.example.sporty.ai.util.PromptDateTable;
@@ -20,6 +24,7 @@ import lombok.extern.slf4j.Slf4j;
 /**
  * A23 매치 초안 생성. 1차 AI-01을 옮겼다.
  * LLM이 실패하면 초안을 만들 수 없으므로 Fallback 없이 503 AI_UNAVAILABLE로 응답한다.
+ * 시설 후보(P1)는 초안의 지역·종목으로 facility I4를 불러 채우고, 실패하면 후보 없이 초안만 준다.
  */
 @Slf4j
 @Service
@@ -31,14 +36,17 @@ public class MatchDraftAiAgent {
     private static final int DESCRIPTION_MAX = 500;
 
     private final DraftChat draftChat;
+    private final FacilityClient facilityClient;
     private final AiMetrics metrics;
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
 
     public AiDraftResponseDto draft(String prompt) {
         long start = System.nanoTime();
         try {
+            AiDraftDto draft = complete(requestDraft(prompt));
             AiDraftResponseDto response = AiDraftResponseDto.builder()
-                    .initialValues(complete(requestDraft(prompt)))
+                    .initialValues(draft)
+                    .facilityCandidates(facilityCandidates(draft))
                     .build();
             metrics.record(AiMetrics.TYPE_DRAFT, AiMetrics.OUTCOME_SUCCESS, start);
             return response;
@@ -70,6 +78,23 @@ public class MatchDraftAiAgent {
             throw AiException.draftInsufficient();
         }
         return draft;
+    }
+
+    // I4로 시설 후보를 받는다. 초안에 지역·종목이 둘 다 없거나 facility 호출이 실패하면 [] (초안은 그대로 응답)
+    private List<FacilityCandidateDto> facilityCandidates(AiDraftDto draft) {
+        District district = District.fromName(draft.getRegion());
+        String sport = draft.getSportType() == null ? null : draft.getSportType().name();
+        if (district == null && sport == null) {
+            return List.of();
+        }
+        try {
+            List<FacilityCandidateDto> candidates = facilityClient.getCandidates(
+                    district == null ? null : district.name(), sport);
+            return candidates == null ? List.of() : candidates;
+        } catch (RuntimeException e) {
+            log.warn("AI 초안 시설 후보 조회 실패, 후보 없이 응답: {}", e.getClass().getSimpleName());
+            return List.of();
+        }
     }
 
     private String systemPrompt() {

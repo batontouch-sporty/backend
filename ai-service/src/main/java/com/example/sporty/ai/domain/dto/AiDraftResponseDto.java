@@ -9,7 +9,7 @@ import lombok.NoArgsConstructor;
 
 /**
  * A23 응답: { initialValues, facilityCandidates }.
- * facilityCandidates는 P1(I4 연동)이라 P0에서는 항상 빈 배열이다(명세 결정).
+ * facilityCandidates는 facility I4(P1)로 받은 시설 후보 최대 5개. 지역·종목이 없거나 조회에 실패하면 빈 배열.
  */
 @Builder
 @Getter

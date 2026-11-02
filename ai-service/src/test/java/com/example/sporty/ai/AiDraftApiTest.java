@@ -2,7 +2,10 @@ package com.example.sporty.ai;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasSize;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -10,6 +13,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.util.List;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
@@ -22,6 +27,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
 import com.example.sporty.ai.agent.DraftChat;
+import com.example.sporty.ai.client.FacilityClient;
+import com.example.sporty.ai.domain.dto.FacilityCandidateDto;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import io.micrometer.core.instrument.MeterRegistry;
@@ -42,6 +49,7 @@ class AiDraftApiTest {
     @Autowired MeterRegistry registry;
 
     @MockitoBean DraftChat draftChat;
+    @MockitoBean FacilityClient facilityClient;
 
     ResultActions requestDraft(String prompt) throws Exception {
         return mvc.perform(post("/api/ai/matches")
@@ -73,6 +81,59 @@ class AiDraftApiTest {
                 .andExpect(jsonPath("$.facilityCandidates", hasSize(0)));
 
         assertThat(count("success")).isEqualTo(before + 1);
+    }
+
+    static final String BASKETBALL_SONGPA = """
+            {"sportType":"BASKETBALL","region":"송파구","startAt":"2026-11-07T19:00:00","maxParticipant":10}
+            """;
+
+    @Test
+    void 초안의_자치구_코드와_종목으로_시설_후보를_채운다() throws Exception {
+        when(draftChat.call(anyString(), anyString())).thenReturn(BASKETBALL_SONGPA);
+        when(facilityClient.getCandidates(eq("SONGPA"), eq("BASKETBALL"))).thenReturn(List.of(
+                FacilityCandidateDto.builder().id(12L).name("잠실 실내체육관 농구장").locationName("잠실 실내체육관")
+                        .region("송파구").startTime(LocalTime.of(9, 0)).endTime(LocalTime.of(22, 0))
+                        .isFree(false).url("https://yeyak.seoul.go.kr/12").build()));
+
+        requestDraft(PROMPT)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.initialValues.region").value("송파구"))
+                .andExpect(jsonPath("$.facilityCandidates", hasSize(1)))
+                .andExpect(jsonPath("$.facilityCandidates[0].id").value(12))
+                .andExpect(jsonPath("$.facilityCandidates[0].startTime").value("09:00:00"));
+    }
+
+    @Test
+    void 시설_후보_조회가_실패해도_초안은_200_후보는_빈_배열() throws Exception {
+        when(draftChat.call(anyString(), anyString())).thenReturn(BASKETBALL_SONGPA);
+        when(facilityClient.getCandidates(any(), any())).thenThrow(FeignErrors.status(503));
+
+        requestDraft(PROMPT)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.initialValues.sportType").value("BASKETBALL"))
+                .andExpect(jsonPath("$.facilityCandidates", hasSize(0)));
+    }
+
+    @Test
+    void 지역과_종목이_없으면_시설_후보를_조회하지_않는다() throws Exception {
+        when(draftChat.call(anyString(), anyString()))
+                .thenReturn("{\"startAt\":\"2026-11-07T19:00:00\",\"maxParticipant\":6}");
+
+        requestDraft("토요일 저녁 7시 6명")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.facilityCandidates", hasSize(0)));
+
+        verifyNoInteractions(facilityClient);
+    }
+
+    @Test
+    void 종목만_있으면_자치구_없이_시설_후보를_조회한다() throws Exception {
+        when(draftChat.call(anyString(), anyString()))
+                .thenReturn("{\"sportType\":\"FUTSAL\",\"maxParticipant\":10}");
+
+        requestDraft("풋살 10명").andExpect(status().isOk());
+
+        verify(facilityClient).getCandidates(null, "FUTSAL");
     }
 
     @Test

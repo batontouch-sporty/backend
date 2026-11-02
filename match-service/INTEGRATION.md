@@ -2,9 +2,9 @@
 
 `MatchRemoteChecks`는 회원·시설 API 호출과 실패 정책을 제공한다. `MatchFacilityIntegration`은 검증 결과를 공통 `MatchEntity`에 연결한다. 저장과 권한·정원·시작 시각 검사는 호출 서비스가 담당한다.
 
-- 생성: `MatchFacilityIntegration.create(userId, details, facilityId)`로 회원·시설을 확인한 엔티티를 받아 같은 업무 트랜잭션에서 저장한다. 방장 참가 행·정원 상태·이벤트는 생성 서비스에서 함께 처리한다.
+- 생성: 회원별 DB 잠금을 획득한 같은 업무 트랜잭션에서 `MatchFacilityIntegration.create(userId, details, facilityId)`로 회원·시설을 확인한 엔티티를 받아 저장한다. 탈퇴 Saga와 같은 회원 잠금 이름을 사용한다. 방장 참가 행·정원 상태는 생성 서비스에서 함께 처리한다.
 - 수정(A12): `MatchRemoteChecks.checkFacility(...)`로 시설을 잠금 전에 검사한다. 트랜잭션에서 회원 잠금 후 매치 행 잠금을 얻고 방장 권한·시설 ID·수정 가능 상태·기간·현재 인원 대비 정원을 재확인한 뒤 저장한다. 트랜잭션 커밋 후 `MatchRemoteChecks.profiles(...)`로 상세 프로필을 조회한다. 원격 시설·프로필 호출 동안 매치 행 잠금을 보유하지 않는다. 검증 실패 시 기존 엔티티는 변경하지 않는다.
-- 참가: 매치 잠금 아래 `MatchRemoteChecks.checkParticipant(userId, match.getGenderGroup().name())`로 회원 자격을 확인한다. 회원별 잠금을 사용하는 참가/Saga의 잠금 순서도 통일한다.
+- 참가: 회원별 DB 잠금 → `MatchRemoteChecks.activeMember(userId)` → 매치 행 잠금 순서다. 조회한 회원의 성별은 `checkParticipantGender(member, genderGroup)`로 매치 잠금 아래에서 비교한다. 참가의 원격 회원 조회는 매치 행 잠금을 잡기 전에 마친다. 이슈 #11의 PR #59에서 실제 호출부를 연결했으며 참가/Saga와 같은 회원 잠금 이름을 사용한다.
 - 상세: `profiles(userIds)` 결과를 참가자 응답에 연결한다. 조회 실패 또는 누락된 회원의 닉네임은 `알 수 없음`이다.
 
 ## 통신과 오류
@@ -23,10 +23,17 @@ I1 `GET /internal/users/{id}`, I2 `GET /internal/users?ids=1,2`, I3 `GET /intern
 
 확인한 실제 시설 코드: PR #41을 포함한 main `adefe5c`. 시설 서비스를 전용 MariaDB 11.4 DB로 실행해 I3 정상·비활성·404·운영시간 밖 요청을 실제 Feign으로 확인했다. 전체 매칭 테스트는 59개 통과했고 실제 브로커 전용 및 서버 중단 전용 테스트 각 1개는 이 실행에서 제외했다.
 
-시설 서버 중단 검증은 동일 서버를 중단한 뒤 `MATCH_LIVE_FACILITY=true`, `MATCH_LIVE_FACILITY_DOWN=true`를 설정하고 `:match-service:test --rerun-tasks --tests '*LiveFacilityContractTest.actualStoppedFacilityReturns503'`를 실행한다. 이때 기존 활성 시설 조회가 503 `FACILITY_SERVICE_UNAVAILABLE`로 바뀌는 것을 확인한다. 정상 조회 테스트와 중단 테스트는 순서대로 실행한다. 메모리 DB 테스트와 구분되며, 전체 팀 Compose/Eureka/Gateway 연결은 후속 API 연결 뒤 확인한다.
+시설 서버 중단 검증은 동일 서버를 중단한 뒤 `MATCH_LIVE_FACILITY=true`, `MATCH_LIVE_FACILITY_DOWN=true`를 설정하고 `:match-service:test --rerun-tasks --tests '*LiveFacilityContractTest.actualStoppedFacilityReturns503'`를 실행한다. 이때 기존 활성 시설 조회가 503 `FACILITY_SERVICE_UNAVAILABLE`로 바뀌는 것을 확인한다. 정상 조회 테스트와 중단 테스트는 순서대로 실행한다. 메모리 DB 테스트와 구분되는 전용 서버 검증이다.
 
-회원 I1·I2는 #44로 main에 추가됐다. 실제 회원 서비스를 전용 MariaDB에서 실행해 Feign 연결 테스트 6개를 통과했다. 매칭 CRUD·참가 API 호출부와 팀 Compose/Eureka/Gateway 통합은 후속 연결 뒤 확인한다.
+회원 I1·I2는 #44로 main에 추가됐다. 실제 회원 서비스를 전용 MariaDB에서 실행해 Feign 연결 테스트 6개를 통과했다. 매칭 CRUD·참가 API 호출부는 PR #77·#59로 연결됐다.
 
+## 최신 연결 상태 (2026-11-02)
+
+- PR #47의 I1·I2·I3 Feign 및 Circuit Breaker를 참가(PR #59), 대기열(PR #65), CRUD(PR #77)에 연결했다.
+- 생성은 회원별 DB 잠금 안에서 회원·시설을 검증하고 시설 스냅샷과 URL, 방장 참가 행을 함께 저장한다.
+- 수정은 시설 조회를 매치 행 잠금 밖에서 완료하고 잠금 후 권한·상태·기간·정원을 다시 확인한다. 프로필 조회는 커밋 후 수행한다.
+- 시설 장애 시 생성·수정은 503으로 거절하고 목록·상세는 저장된 시설 정보를 사용한다. 회원 장애 시 참가는 503으로 거절하고 상세 닉네임은 `알 수 없음`으로 대체한다.
+- 실제 서비스 검증 이력과 재현 방법은 [통합 검증 기록](INTEGRATION_VERIFICATION.md)에 정리한다.
 
 ## 실제 회원 연결 테스트
 

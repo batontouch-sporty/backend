@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.*;
 import org.junit.jupiter.api.Test;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import static com.example.sporty.user.points.PointSettlementService.Action.*;
@@ -29,6 +30,36 @@ class PointSettlementTest {
     }
 
     private UserEntity read(long uid) { return users.findById(uid).orElseThrow(); }
+
+    @Test
+    @Transactional
+    void redeliveryWithDifferentEventIdsChargesAndRefundsOnlyOnce() {
+        long uid = member(50).getId();
+        UUID request = UUID.randomUUID();
+        points.apply(command(uid, request, CHARGE));
+        points.apply(command(uid, request, CHARGE));
+        assertThat(read(uid).getPoints()).isEqualTo(40);
+        points.apply(command(uid, request, REFUND));
+        points.apply(command(uid, request, REFUND));
+        assertThat(read(uid).getPoints()).isEqualTo(50);
+        assertThat(history.findByRequestId(request.toString()))
+                .extracting(PointHistory::getReason)
+                .containsExactlyInAnyOrder(PointHistory.Reason.DEPOSIT_CHARGED, PointHistory.Reason.DEPOSIT_RETURNED);
+    }
+
+    @Test
+    @Transactional
+    void fiveAttendancesPayTenBonusPointsOnceBelowTheCap() {
+        long uid = member(50).getId();
+        for (int i = 1; i <= 5; i++) {
+            UUID request = UUID.randomUUID();
+            points.apply(command(uid, request, CHARGE));
+            points.apply(command(uid, request, ATTENDED));
+            points.apply(command(uid, request, ATTENDED));
+            assertThat(read(uid).getPoints()).isEqualTo(i < 5 ? 50 : 60);
+            assertThat(read(uid).getAttendanceRewardCount()).isEqualTo(i % 5);
+        }
+    }
 
     @Test
     void simultaneousApplicationsSpendLastTenPointsOnlyOnce() throws Exception {

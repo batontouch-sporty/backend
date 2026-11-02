@@ -407,6 +407,7 @@ class MatchCrudTest {
         assertThat(event.path("from").asText()).isEqualTo("RECRUITING");
         assertThat(event.path("to").asText()).isEqualTo("CANCELLED");
         assertThat(event.path("participantIds").toString()).isEqualTo("[1,2]");
+        assertThat(event.path("reason").asText()).isEqualTo("방장 요청으로 모임 삭제");
         mvc.perform(delete("/api/matches/" + id).header("X-User-Id", "1"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("MATCH_DELETE_NOT_ALLOWED"));

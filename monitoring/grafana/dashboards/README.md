@@ -16,9 +16,9 @@ Saga·AI와 Match Service Circuit Breaker·Feign HTTP 패널은 수집된 계측
 | --- | --- |
 | sporty_feign_http_requests_seconds_count/sum | Match의 회원·시설 Feign HTTP Timer 수집 확인. `application=match-service`, `job=sporty-services`, `clientName`, `http_method`, `http_status_code`, `http_url`, `error`, `instance`로 구분. 2026-11-02 Prometheus 조회에서 MemberClient HTTP 200 count=1, FacilityClient HTTP 404 count=1, 양쪽 sum 확인. 통신 대시보드 panel-6~8은 두 Client만 선택 |
 | http_client_requests_seconds_count/sum | Match의 Eureka Discovery RestTemplate HTTP Timer 수집 확인. `client_name=discovery-service`이며 순수 Feign 또는 CB 보호 호출과 합산하지 않음 |
-| resilience4j_circuitbreaker_state | Match의 `MemberClientgetLong`·`FacilityClientgetLong` 회로에서 application·job·instance·name·group·state 시계열 수집 확인. state는 소문자이며 값 1이 해당 시점의 활성 상태. CLOSED 관측, OPEN/HALF_OPEN 전환은 미검증 |
-| resilience4j_circuitbreaker_calls_seconds_count/sum | 두 회로의 CB 보호 호출 Timer 수집 확인. kind=successful/failed/ignored이며 선택 기간 호출량은 `increase(count)`, 평균 처리시간은 같은 필터의 `rate(sum)/rate(count)`로 계산. 순수 Feign HTTP 시간이나 차단된 호출량이 아님 |
-| resilience4j_circuitbreaker_failure_rate | 두 회로의 Gauge 수집 확인. 최소 호출 수 미충족 시 `-1`이며 통신 대시보드에서는 제외하고 0%로 바꾸지 않음 |
+| resilience4j_circuitbreaker_state | Match의 `MemberClientgetLong`·`FacilityClientgetLong` 회로에서 application·job·instance·name·group·state 시계열 수집 확인. `MemberClientprofilesList`는 기본 Feign CB 이름 생성 규칙에서 도출했으며 기존 Mock HTTP 테스트는 profiles 호출을 검증함. 운영 Prometheus 시계열은 아직 미관측. 통신 대시보드는 세 회로를 선택하며 미관측 회로에 가짜 0을 만들지 않음. state는 소문자이며 값 1이 해당 시점의 활성 상태. CLOSED 관측, OPEN/HALF_OPEN 전환은 미검증 |
+| resilience4j_circuitbreaker_calls_seconds_count/sum | 기존 두 회로의 CB 보호 호출 Timer 수집 확인. 프로필 회로는 수집 대기. kind=successful/failed/ignored이며 선택 기간 호출량은 `increase(count)`, 평균 처리시간은 같은 필터의 `rate(sum)/rate(count)`로 계산. 순수 Feign HTTP 시간이나 차단된 호출량이 아님 |
+| resilience4j_circuitbreaker_failure_rate | 기존 두 회로의 Gauge 수집 확인. 프로필 회로는 수집 대기. 최소 호출 수 미충족 시 `-1`이며 통신 대시보드에서는 제외하고 0%로 바꾸지 않음 |
 | resilience4j_circuitbreaker_not_permitted_calls_total | 회로가 차단한 호출의 별도 Counter 수집 확인. CB Timer 호출량에 포함하지 않음 |
 | kafka_consumergroup_lag | 별도 Exporter 필요. 현재 수집 미확인. consumergroup·topic·partition 기준 검증 대기 |
 | kafka_consumer_fetch_manager_records_lag_max | 실제 바인더 출력 이름과 수집 여부 미검증. 최대 파티션 Lag이며 그룹 전체 Lag과 구분 |

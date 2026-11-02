@@ -3,6 +3,8 @@ name: sporty
 # 컨테이너 안에서는 호스트 포트가 아니라 내부 포트로 붙으므로 *_HOST_PORT를 고정한다.
 x-app-env: &app-env
   SPRING_PROFILES_ACTIVE: dev
+  TZ: Asia/Seoul
+  JAVA_TOOL_OPTIONS: "-Duser.timezone=Asia/Seoul"
   CONFIG_SERVER_URL: http://config-service:8888
   EUREKA_URL: http://discovery-service:8761/eureka
   # 앱 컨테이너는 호스트 포트가 아니라 Compose 서비스명과 내부 포트로 span을 전송한다.
@@ -106,6 +108,7 @@ services:
   mariadb:
     image: mariadb:11.4
     environment:
+      TZ: Asia/Seoul
       MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:?}
       USER_APP_PASSWORD: ${USER_APP_PASSWORD:?}
       MATCH_APP_PASSWORD: ${MATCH_APP_PASSWORD:?}

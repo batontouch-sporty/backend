@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-common-config
+  namespace: sporty
+  labels:
+    app.kubernetes.io/component: common
+    app.kubernetes.io/part-of: sporty
+data:
+  TZ: "Asia/Seoul"
+  JAVA_TOOL_OPTIONS: "-Duser.timezone=Asia/Seoul"

@@ -61,6 +61,8 @@ application accepts only capacity 2 or greater and after checking for existing
 capacity-1 rows. Stop on SQL errors. Fresh Compose installations use
 `docker/mariadb/schema.sql` and do not need 004. The earlier 001/002 scripts target
 the original `sporty` database and must not be run against `match_db`.
+`scripts/ApplyConstraintMigration.java` is only for 001 / `sporty`; it does not
+apply R8 migration 004. Use the MariaDB CLI command below for 004 / `match_db`.
 
 Run the entire 004 file with the MariaDB CLI in batch mode (for example, log in
 with `mariadb --abort-source-on-error --host=<host> --user=<migration-user> --password`

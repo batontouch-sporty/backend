@@ -8,15 +8,28 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.*;
 
 import io.github.resilience4j.circuitbreaker.*;
+import io.micrometer.core.instrument.Meter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
+import io.micrometer.observation.Observation;
+import io.micrometer.observation.ObservationHandler;
+import io.micrometer.observation.ObservationRegistry;
 
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.autoconfigure.actuate.observability.AutoConfigureObservability;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.web.client.RestTemplateBuilder;
+import org.springframework.cloud.openfeign.FeignClientFactory;
 import org.springframework.context.annotation.Import;
+import org.springframework.context.ApplicationContext;
 import org.springframework.test.context.*;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.annotation.*;
+
+import feign.Capability;
+import feign.micrometer.MicrometerObservationCapability;
 
 import java.net.*;
 import java.time.*;
@@ -40,7 +53,9 @@ import java.util.concurrent.atomic.AtomicInteger;
             "spring.cloud.openfeign.client.config.matchFacilityClient.readTimeout=150"
         })
 @AutoConfigureMockMvc
+@AutoConfigureObservability
 @Import(MatchRemoteChecksTest.Probe.class)
+@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class MatchRemoteChecksTest {
     static final AtomicInteger memberStatus = new AtomicInteger(200),
             facilityStatus = new AtomicInteger(200),
@@ -167,6 +182,11 @@ class MatchRemoteChecksTest {
     @Autowired MatchRemoteChecks checks;
     @Autowired CircuitBreakerRegistry breakers;
     @Autowired MockMvc mvc;
+    @Autowired ApplicationContext applicationContext;
+    @Autowired ObservationRegistry observations;
+    @Autowired MeterRegistry meters;
+    @Autowired FeignClientFactory feignClients;
+    @Autowired RestTemplateBuilder restTemplates;
     LocalDateTime start = LocalDate.of(2030, 1, 2).atTime(18, 0), end = start.plusHours(2);
 
     @BeforeEach
@@ -202,6 +222,157 @@ class MatchRemoteChecksTest {
                             assertThat(ex.status()).isEqualTo(status);
                             assertThat(ex.code()).isEqualTo(code);
                         });
+    }
+
+    @Test
+    void feignMicrometerCapabilityIsAvailableToBothClientContexts() {
+        var root = applicationContext.getBeansOfType(MicrometerObservationCapability.class);
+        System.out.println("Issue 87 root capability beans: " + root.keySet());
+        System.out.println("Issue 87 ObservationRegistry: " + observations.getClass().getName());
+        System.out.println("Issue 87 MeterRegistry: " + meters.getClass().getName());
+        assertThat(observations).isNotNull();
+        assertThat(meters).isNotNull();
+
+        for (String client : List.of("matchMemberClient", "matchFacilityClient")) {
+            var local = feignClients.getInstancesWithoutAncestors(client, Capability.class);
+            var inherited = feignClients.getInstances(client, Capability.class);
+            System.out.println("Issue 87 " + client + " local capabilities: " + local);
+            System.out.println("Issue 87 " + client + " visible capabilities: " + inherited);
+            assertThat(inherited.values())
+                    .as("%s must see MicrometerObservationCapability", client)
+                    .anyMatch(MicrometerObservationCapability.class::isInstance);
+        }
+    }
+
+    @Test
+    @Order(1)
+    void realFeignHttpRequestsCreateClientTimers() {
+        var observed = new CopyOnWriteArrayList<String>();
+        var registrationFailures = new CopyOnWriteArrayList<String>();
+        meters.config().onMeterRegistrationFailed(
+                (id, reason) -> registrationFailures.add(id + ": " + reason));
+        observations.observationConfig().observationHandler(new ObservationHandler<Observation.Context>() {
+            @Override
+            public boolean supportsContext(Observation.Context context) {
+                return true;
+            }
+
+            @Override
+            public void onStop(Observation.Context context) {
+                observed.add(context.getName() + " " + context.getLowCardinalityKeyValues());
+            }
+        });
+
+        // Eureka uses RestTemplate, so register its HTTP meter shape before the Feign calls.
+        restTemplates.build().getForEntity(
+                "http://127.0.0.1:" + memberServer.getAddress().getPort() + "/internal/users/5",
+                String.class);
+
+        var before = timerCounts();
+        assertThat(checks.activeMember(5L).id()).isEqualTo(5L);
+        var afterMember = timerCounts();
+        assertThat(checks.checkFacility(12L, start, end).facilityId()).isEqualTo(12L);
+        var afterFacility = timerCounts();
+        memberStatus.set(404);
+        error(() -> checks.activeMember(5L), 401, "MATCH_USER_NOT_FOUND");
+        var after404 = timerCounts();
+
+        System.out.println("Issue 87 observations: " + observed);
+        System.out.println("Issue 87 member timer changes: " + timerChanges(before, afterMember));
+        System.out.println("Issue 87 facility timer changes: " + timerChanges(afterMember, afterFacility));
+        System.out.println("Issue 87 404 timer changes: " + timerChanges(afterFacility, after404));
+        assertHttpTimerChange(before, afterMember, MemberClient.class, "200");
+        assertHttpTimerChange(afterMember, afterFacility, FacilityClient.class, "200");
+        assertHttpTimerChange(afterFacility, after404, MemberClient.class, "404");
+
+        var scrape = prometheusScrape();
+        var exported = scrape.lines()
+                .filter(line -> line.startsWith("sporty_feign_http_requests_seconds_")
+                        || line.startsWith("http_client_requests_seconds_"))
+                .toList();
+        var active = scrape.lines()
+                .filter(line -> line.startsWith("sporty_feign_http_requests_active_"))
+                .toList();
+        System.out.println("Issue 87 exported HTTP series: " + exported);
+        System.out.println("Issue 87 exported active series: " + active);
+        System.out.println("Issue 87 meter registration failures: " + registrationFailures);
+        assertScrapedTimer(exported, "sporty_feign_http_requests_seconds", MemberClient.class, "200");
+        assertScrapedTimer(exported, "sporty_feign_http_requests_seconds", FacilityClient.class, "200");
+        assertScrapedTimer(exported, "sporty_feign_http_requests_seconds", MemberClient.class, "404");
+        assertThat(exported)
+                .as("RestTemplate HTTP count/sum must keep its original name")
+                .anyMatch(line -> line.startsWith("http_client_requests_seconds_count")
+                        && line.contains("client_name=\"127.0.0.1\"") && line.endsWith(" 1"))
+                .anyMatch(line -> line.startsWith("http_client_requests_seconds_sum")
+                        && line.contains("client_name=\"127.0.0.1\""));
+        assertThat(active)
+                .as("Feign active meters must use the separate name")
+                .anyMatch(line -> line.contains("MemberClient"))
+                .anyMatch(line -> line.contains("FacilityClient"));
+        assertThat(registrationFailures).isEmpty();
+    }
+
+    record TimerSample(long count, double seconds) {}
+
+    Map<Meter.Id, TimerSample> timerCounts() {
+        var counts = new HashMap<Meter.Id, TimerSample>();
+        meters.getMeters().stream()
+                .filter(Timer.class::isInstance)
+                .map(Timer.class::cast)
+                .filter(timer -> timer.getId().getName().equals("sporty.feign.http.requests"))
+                .forEach(timer -> counts.put(timer.getId(),
+                        new TimerSample(timer.count(), timer.totalTime(java.util.concurrent.TimeUnit.SECONDS))));
+        return counts;
+    }
+
+    Map<Meter.Id, TimerSample> timerChanges(
+            Map<Meter.Id, TimerSample> before, Map<Meter.Id, TimerSample> after) {
+        var changes = new HashMap<Meter.Id, TimerSample>();
+        after.forEach((id, sample) -> {
+            var previous = before.getOrDefault(id, new TimerSample(0, 0));
+            if (sample.count() > previous.count())
+                changes.put(id, new TimerSample(sample.count() - previous.count(),
+                        sample.seconds() - previous.seconds()));
+        });
+        return changes;
+    }
+
+    void assertHttpTimerChange(Map<Meter.Id, TimerSample> before,
+            Map<Meter.Id, TimerSample> after, Class<?> client, String status) {
+        var changes = timerChanges(before, after);
+        assertThat(changes)
+                .as("HTTP Timer for %s status %s", client.getSimpleName(), status)
+                .hasSize(1);
+        var entry = changes.entrySet().iterator().next();
+        assertThat(entry.getKey().getTag("clientName")).isEqualTo(client.getName());
+        assertThat(entry.getKey().getTag("http.method")).isEqualTo("GET");
+        assertThat(entry.getKey().getTag("http.status_code")).isEqualTo(status);
+        assertThat(entry.getValue().count()).isEqualTo(1);
+        assertThat(entry.getValue().seconds()).isPositive();
+    }
+
+    String prometheusScrape() {
+        try {
+            return (String) meters.getClass().getMethod("scrape").invoke(meters);
+        } catch (ReflectiveOperationException ex) {
+            throw new AssertionError("Prometheus registry scrape unavailable", ex);
+        }
+    }
+
+    void assertScrapedTimer(List<String> lines, String name, Class<?> client, String status) {
+        for (String suffix : List.of("count", "sum")) {
+            var matches = lines.stream()
+                    .filter(line -> line.startsWith(name + "_" + suffix + "{"))
+                    .filter(line -> line.contains("clientName=\"" + client.getName() + "\""))
+                    .filter(line -> line.contains("http_status_code=\"" + status + "\""))
+                    .toList();
+            assertThat(matches)
+                    .as("%s %s %s", client.getSimpleName(), status, suffix)
+                    .hasSize(1);
+            double value = Double.parseDouble(matches.get(0).substring(matches.get(0).lastIndexOf(' ') + 1));
+            if (suffix.equals("count")) assertThat(value).isEqualTo(1);
+            else assertThat(value).isPositive();
+        }
     }
 
     @Test

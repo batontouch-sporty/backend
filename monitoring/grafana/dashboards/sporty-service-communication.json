@@ -28,7 +28,7 @@
       }
     ],
     "cursorSync": "Crosshair",
-    "description": "Feign 호출 시간·실패율 및 Circuit Breaker 상태. 실측 지표 연동 전 화면 초안.",
+    "description": "Match Service 회원·시설 Circuit Breaker와 실제 Feign HTTP 요청 계측을 분리해 표시합니다.",
     "editable": true,
     "elements": {
       "panel-1": {
@@ -54,10 +54,10 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "resilience4j_circuitbreaker_state{application=~\".+\"} == 1",
+                        "expr": "resilience4j_circuitbreaker_state{job=\"sporty-services\",application=\"match-service\",name=~\"MemberClientgetLong|MemberClientprofilesList|FacilityClientgetLong\"} == 1",
                         "format": "table",
                         "instant": true,
-                        "legendFormat": "{{application}}",
+                        "legendFormat": "{{instance}} / {{name}} / {{state}}",
                         "range": false
                       }
                     },
@@ -75,7 +75,9 @@
                       "excludeByName": {
                         "Time": true,
                         "Value": true,
-                        "__name__": true
+                        "__name__": true,
+                        "group": true,
+                        "job": true
                       },
                       "renameByName": {
                         "application": "호출 서비스",
@@ -193,8 +195,8 @@
         "kind": "Panel",
         "spec": {
           "id": 2,
-          "title": "Feign 평균 호출 시간",
-          "description": "기록된 클라이언트 호출의 평균 시간입니다. 해당 지표에 다른 HTTP 클라이언트도 기록된다면 실제 Feign 식별 라벨로 필터를 추가해야 합니다.",
+          "title": "CB 보호 호출 평균 처리시간",
+          "description": "회원·시설 회로별 CB Timer의 count/sum으로 계산한 평균입니다. 순수 Feign HTTP 시간이나 차단된 호출 시간은 아닙니다.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -212,10 +214,10 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "sum by (application, client_name) (rate(http_client_requests_seconds_sum{application=~\".+\"}[$__rate_interval])) / (sum by (application, client_name) (rate(http_client_requests_seconds_count{application=~\".+\"}[$__rate_interval])))",
+                        "expr": "sum by (instance, name) (rate(resilience4j_circuitbreaker_calls_seconds_sum{job=\"sporty-services\",application=\"match-service\",name=~\"MemberClientgetLong|MemberClientprofilesList|FacilityClientgetLong\",kind=~\"successful|failed|ignored\"}[$__rate_interval])) / sum by (instance, name) (rate(resilience4j_circuitbreaker_calls_seconds_count{job=\"sporty-services\",application=\"match-service\",name=~\"MemberClientgetLong|MemberClientprofilesList|FacilityClientgetLong\",kind=~\"successful|failed|ignored\"}[$__rate_interval]))",
                         "format": "time_series",
                         "instant": false,
-                        "legendFormat": "{{application}} → {{client_name}}",
+                        "legendFormat": "{{instance}} / {{name}}",
                         "range": true
                       }
                     },
@@ -311,8 +313,8 @@
         "kind": "Panel",
         "spec": {
           "id": 3,
-          "title": "Feign 호출 실패율",
-          "description": "초안 기준: HTTP 4xx·5xx 및 정상 HTTP 상태가 없는 호출을 실패로 분류합니다. 실제 status 라벨과 팀의 실패 정의를 확인해야 합니다. 요청 없음은 0%로 꾸미지 않습니다.",
+          "title": "Circuit Breaker 실패율",
+          "description": "Resilience4j failure_rate Gauge입니다. 최소 호출 수 미충족의 -1은 표시하지 않으며 0%로 바꾸지 않습니다. Feign HTTP 실패율이 아닙니다.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -330,10 +332,10 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "100 * ((sum by (application, client_name) (rate(http_client_requests_seconds_count{application=~\".+\",status!~\"[1-3][0-9][0-9]\"}[$__rate_interval]))) or on (application, client_name) (0 * (sum by (application, client_name) (rate(http_client_requests_seconds_count{application=~\".+\"}[$__rate_interval]))))) / (sum by (application, client_name) (rate(http_client_requests_seconds_count{application=~\".+\"}[$__rate_interval])))",
+                        "expr": "resilience4j_circuitbreaker_failure_rate{job=\"sporty-services\",application=\"match-service\",name=~\"MemberClientgetLong|MemberClientprofilesList|FacilityClientgetLong\"} >= 0",
                         "format": "time_series",
                         "instant": false,
-                        "legendFormat": "{{application}} → {{client_name}}",
+                        "legendFormat": "{{instance}} / {{name}}",
                         "range": true
                       }
                     },
@@ -449,10 +451,10 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "resilience4j_circuitbreaker_state{application=~\".+\"}",
+                        "expr": "resilience4j_circuitbreaker_state{job=\"sporty-services\",application=\"match-service\",name=~\"MemberClientgetLong|MemberClientprofilesList|FacilityClientgetLong\"}",
                         "format": "time_series",
                         "instant": false,
-                        "legendFormat": "{{application}} / {{name}} / {{state}}",
+                        "legendFormat": "{{instance}} / {{name}} / {{state}}",
                         "range": true
                       }
                     },
@@ -544,6 +546,346 @@
             }
           }
         }
+      },
+      "panel-5": {
+        "kind": "Panel",
+        "spec": {
+          "id": 5,
+          "title": "CB 보호 호출량 · 선택 기간",
+          "description": "회원·시설 Circuit Breaker가 허용한 호출의 successful, failed, ignored 결과를 회로와 인스턴스별로 표시합니다. 차단된 not_permitted 호출은 별도 지표입니다.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "prometheus",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "sporty-prometheus"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "expr": "sum by (instance, name, kind) (increase(resilience4j_circuitbreaker_calls_seconds_count{job=\"sporty-services\",application=\"match-service\",name=~\"MemberClientgetLong|MemberClientprofilesList|FacilityClientgetLong\",kind=~\"successful|failed|ignored\"}[$__range]))",
+                        "format": "time_series",
+                        "instant": true,
+                        "legendFormat": "{{instance}} / {{name}} / {{kind}}",
+                        "range": false
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "stat",
+            "version": "13.3.0",
+            "spec": {
+              "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "auto",
+                "wideLayout": true
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "suffix:건",
+                  "min": 0,
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "green"
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "noValue": "데이터 없음"
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-6": {
+        "kind": "Panel",
+        "spec": {
+          "id": 6,
+          "title": "Feign HTTP 호출량 · 선택 기간",
+          "description": "회원·시설 Feign HTTP 요청의 선택 기간 증가량입니다. Client와 HTTP 상태 코드별 건수이며 CB 보호 호출과 Discovery 요청은 포함하지 않습니다.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "prometheus",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "sporty-prometheus"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "expr": "sum by (instance, clientName, http_status_code) (increase(sporty_feign_http_requests_seconds_count{job=\"sporty-services\",application=\"match-service\",clientName=~\"com[.]example[.]sporty[.]match[.]integration[.](MemberClient|FacilityClient)\"}[$__range]))",
+                        "format": "time_series",
+                        "instant": true,
+                        "legendFormat": "{{instance}} / {{clientName}} / HTTP {{http_status_code}}",
+                        "range": false
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "stat",
+            "version": "13.3.0",
+            "spec": {
+              "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "auto",
+                "wideLayout": true
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "suffix:건",
+                  "min": 0,
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "green"
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "noValue": "데이터 없음"
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-7": {
+        "kind": "Panel",
+        "spec": {
+          "id": 7,
+          "title": "Feign HTTP 평균 응답시간 · 선택 기간",
+          "description": "회원·시설 Feign HTTP Timer의 선택 기간 sum 증가량을 count 증가량으로 나눈 평균(초)입니다. 요청 증가량이 0이면 값을 표시하지 않습니다.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "prometheus",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "sporty-prometheus"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "expr": "sum by (instance, clientName) (increase(sporty_feign_http_requests_seconds_sum{job=\"sporty-services\",application=\"match-service\",clientName=~\"com[.]example[.]sporty[.]match[.]integration[.](MemberClient|FacilityClient)\"}[$__range])) / (sum by (instance, clientName) (increase(sporty_feign_http_requests_seconds_count{job=\"sporty-services\",application=\"match-service\",clientName=~\"com[.]example[.]sporty[.]match[.]integration[.](MemberClient|FacilityClient)\"}[$__range])) > 0)",
+                        "format": "time_series",
+                        "instant": true,
+                        "legendFormat": "{{instance}} / {{clientName}}",
+                        "range": false
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "stat",
+            "version": "13.3.0",
+            "spec": {
+              "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "auto",
+                "wideLayout": true
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "s",
+                  "min": 0,
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "green"
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "noValue": "데이터 없음"
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-8": {
+        "kind": "Panel",
+        "spec": {
+          "id": 8,
+          "title": "Feign HTTP 5xx 오류율 · 선택 기간",
+          "description": "회원·시설 Feign HTTP 요청 중 5xx 응답의 비율입니다. 404는 포함하지 않습니다. 요청은 있지만 5xx가 없으면 0%, 요청 증가량이 없으면 데이터 없음입니다. 타임아웃·연결 오류는 5xx 응답이 아닐 수 있습니다.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "prometheus",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "sporty-prometheus"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "expr": "100 * ((sum by (instance, clientName) (increase(sporty_feign_http_requests_seconds_count{job=\"sporty-services\",application=\"match-service\",clientName=~\"com[.]example[.]sporty[.]match[.]integration[.](MemberClient|FacilityClient)\",http_status_code=~\"5..\"}[$__range])) or on (instance, clientName) (0 * sum by (instance, clientName) (increase(sporty_feign_http_requests_seconds_count{job=\"sporty-services\",application=\"match-service\",clientName=~\"com[.]example[.]sporty[.]match[.]integration[.](MemberClient|FacilityClient)\"}[$__range])))) / (sum by (instance, clientName) (increase(sporty_feign_http_requests_seconds_count{job=\"sporty-services\",application=\"match-service\",clientName=~\"com[.]example[.]sporty[.]match[.]integration[.](MemberClient|FacilityClient)\"}[$__range])) > 0))",
+                        "format": "time_series",
+                        "instant": true,
+                        "legendFormat": "{{instance}} / {{clientName}}",
+                        "range": false
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "stat",
+            "version": "13.3.0",
+            "spec": {
+              "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "auto",
+                "wideLayout": true
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "percent",
+                  "min": 0,
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "green"
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "noValue": "데이터 없음"
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
       }
     },
     "layout": {
@@ -599,6 +941,58 @@
               "element": {
                 "kind": "ElementReference",
                 "name": "panel-4"
+              }
+            }
+          },
+          {
+            "kind": "GridLayoutItem",
+            "spec": {
+              "x": 0,
+              "y": 24,
+              "width": 24,
+              "height": 7,
+              "element": {
+                "kind": "ElementReference",
+                "name": "panel-5"
+              }
+            }
+          },
+          {
+            "kind": "GridLayoutItem",
+            "spec": {
+              "x": 0,
+              "y": 31,
+              "width": 24,
+              "height": 7,
+              "element": {
+                "kind": "ElementReference",
+                "name": "panel-6"
+              }
+            }
+          },
+          {
+            "kind": "GridLayoutItem",
+            "spec": {
+              "x": 0,
+              "y": 38,
+              "width": 12,
+              "height": 7,
+              "element": {
+                "kind": "ElementReference",
+                "name": "panel-7"
+              }
+            }
+          },
+          {
+            "kind": "GridLayoutItem",
+            "spec": {
+              "x": 12,
+              "y": 38,
+              "width": 12,
+              "height": 7,
+              "element": {
+                "kind": "ElementReference",
+                "name": "panel-8"
               }
             }
           }

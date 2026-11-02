@@ -394,7 +394,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "100 * ((sum by (type) (rate(ai_request_seconds_count{outcome=\"success\"}[$__rate_interval]))) or on (type) (0 * (sum by (type) (rate(ai_request_seconds_count{outcome=~\"success|fallback|error\"}[$__rate_interval]))))) / (sum by (type) (rate(ai_request_seconds_count{outcome=~\"success|fallback|error\"}[$__rate_interval])))",
+                        "expr": "100 * ((sum by (type) (rate(ai_request_seconds_count{application=\"ai-service\",type=~\"search|draft|recommend\",outcome=\"success\"}[$__rate_interval]))) or on (type) (0 * (sum by (type) (rate(ai_request_seconds_count{application=\"ai-service\",type=~\"search|draft|recommend\",outcome=~\"success|fallback|error\"}[$__rate_interval]))))) / (sum by (type) (rate(ai_request_seconds_count{application=\"ai-service\",type=~\"search|draft|recommend\",outcome=~\"success|fallback|error\"}[$__rate_interval])))",
                         "format": "time_series",
                         "instant": false,
                         "legendFormat": "{{type}}",
@@ -513,7 +513,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "sum by (type, outcome) (rate(ai_request_seconds_sum[$__rate_interval])) / sum by (type, outcome) (rate(ai_request_seconds_count[$__rate_interval]))",
+                        "expr": "sum by (type, outcome) (rate(ai_request_seconds_sum{application=\"ai-service\",type=~\"search|draft|recommend\",outcome=~\"success|fallback|error\"}[$__rate_interval])) / sum by (type, outcome) (rate(ai_request_seconds_count{application=\"ai-service\",type=~\"search|draft|recommend\",outcome=~\"success|fallback|error\"}[$__rate_interval]))",
                         "format": "time_series",
                         "instant": false,
                         "legendFormat": "{{type}} / {{outcome}}",
@@ -749,7 +749,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "sum by (type, outcome) (rate(ai_request_seconds_count{outcome=~\"success|fallback|error\"}[$__rate_interval]))",
+                        "expr": "sum by (type, outcome) (rate(ai_request_seconds_count{application=\"ai-service\",type=~\"search|draft|recommend\",outcome=~\"success|fallback|error\"}[$__rate_interval]))",
                         "format": "time_series",
                         "instant": false,
                         "legendFormat": "{{type}} / {{outcome}}",
@@ -837,6 +837,91 @@
                       "mode": "off"
                     }
                   }
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-9": {
+        "kind": "Panel",
+        "spec": {
+          "id": 9,
+          "title": "탈퇴 Saga 늦은 결과 · 선택 기간",
+          "description": "시간 초과로 이미 종료된 Saga에 나중에 도착한 cleaned와 rejected를 별도 건수로 표시합니다. Final 결과에는 더하지 않습니다. 선택 기간의 Counter 증가량입니다.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "prometheus",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "sporty-prometheus"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "expr": "sum by (outcome) (increase(sporty_withdrawal_saga_late_results_total{application=\"user-service\",outcome=~\"cleaned|rejected\"}[$__range]))",
+                        "format": "time_series",
+                        "instant": true,
+                        "legendFormat": "{{outcome}}",
+                        "range": false
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "stat",
+            "version": "13.3.0",
+            "spec": {
+              "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "auto",
+                "wideLayout": true
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "suffix:건",
+                  "min": 0,
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "green"
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "noValue": "데이터 없음"
                 },
                 "overrides": []
               }
@@ -950,6 +1035,19 @@
               "element": {
                 "kind": "ElementReference",
                 "name": "panel-8"
+              }
+            }
+          },
+          {
+            "kind": "GridLayoutItem",
+            "spec": {
+              "x": 0,
+              "y": 23,
+              "width": 24,
+              "height": 5,
+              "element": {
+                "kind": "ElementReference",
+                "name": "panel-9"
               }
             }
           }

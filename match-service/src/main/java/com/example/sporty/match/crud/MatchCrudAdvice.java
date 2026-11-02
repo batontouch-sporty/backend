@@ -5,6 +5,7 @@ import com.example.sporty.match.withdrawal.MemberLockTimeoutException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.BindException;
+import org.springframework.validation.FieldError;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
@@ -25,14 +26,16 @@ public class MatchCrudAdvice {
 
     @ExceptionHandler(BindException.class)
     ResponseEntity<Error> invalid(BindException ex) {
-        var error = ex.getBindingResult().getFieldError();
+        FieldError error = ex.getBindingResult().getFieldError();
         return ResponseEntity.badRequest()
                 .body(
                         new Error(
                                 "INVALID_INPUT",
                                 error == null
                                         ? "입력값을 확인해주세요."
-                                        : error.getField() + ": " + error.getDefaultMessage()));
+                                        : error.getField() + ": " + (error.isBindingFailure()
+                                                ? "입력 형식이나 허용된 값을 확인해주세요."
+                                                : error.getDefaultMessage())));
     }
 
     @ExceptionHandler({

@@ -31,7 +31,7 @@ import java.util.*;
             "spring.cloud.config.enabled=false",
             "spring.config.import=",
             "eureka.client.enabled=false",
-            "spring.datasource.url=jdbc:h2:mem:crud10draft;MODE=MySQL;DB_CLOSE_DELAY=-1",
+            "spring.datasource.url=jdbc:h2:mem:crud10;MODE=MySQL;DB_CLOSE_DELAY=-1",
             "spring.datasource.driver-class-name=org.h2.Driver",
             "spring.datasource.username=sa",
             "spring.datasource.password=",
@@ -40,7 +40,7 @@ import java.util.*;
             "match.withdrawal.enabled=false"
         })
 @AutoConfigureMockMvc
-class MatchCrudDraftTest {
+class MatchCrudTest {
     @Autowired MatchCrudService service;
     @Autowired MatchRepository matches;
     @Autowired MatchParticipantRepository participants;
@@ -174,8 +174,14 @@ class MatchCrudDraftTest {
                 .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
         mvc.perform(get("/api/matches").param("sportType", "NOT_A_SPORT"))
                 .andExpect(status().isBadRequest());
+        mvc.perform(get("/api/matches").param("status", "FOO"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"))
+                .andExpect(jsonPath("$.message")
+                        .value("status: 입력 형식이나 허용된 값을 확인해주세요."));
         mvc.perform(get("/api/matches").param("maxParticipant", "0"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("maxParticipant: 1 이상이어야 합니다."));
         mvc.perform(
                         get("/api/matches")
                                 .param("startAt", start.plusDays(1).toString())

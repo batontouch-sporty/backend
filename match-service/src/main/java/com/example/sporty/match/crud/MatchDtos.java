@@ -14,15 +14,15 @@ public final class MatchDtos {
     private MatchDtos() {}
 
     public record Create(
-            @NotNull @Positive Long serviceId,
-            @NotBlank @Size(max = 50) String title,
-            @Size(max = 500) String description,
-            @NotNull LocalDateTime startAt,
-            @NotNull LocalDateTime endAt,
-            @NotNull @Min(1) Integer maxParticipant,
-            @NotNull SkillLevel skillLevel,
-            @NotNull SportType sportType,
-            @NotNull GenderGroup genderGroup) {
+            @NotNull(message = "필수입니다.") @Positive(message = "1 이상이어야 합니다.") Long serviceId,
+            @NotBlank(message = "필수입니다.") @Size(max = 50, message = "50자 이하여야 합니다.") String title,
+            @Size(max = 500, message = "500자 이하여야 합니다.") String description,
+            @NotNull(message = "필수입니다.") LocalDateTime startAt,
+            @NotNull(message = "필수입니다.") LocalDateTime endAt,
+            @NotNull(message = "필수입니다.") @Min(value = 1, message = "1 이상이어야 합니다.") Integer maxParticipant,
+            @NotNull(message = "필수입니다.") SkillLevel skillLevel,
+            @NotNull(message = "필수입니다.") SportType sportType,
+            @NotNull(message = "필수입니다.") GenderGroup genderGroup) {
         public MatchEntity.Details details() {
             return new MatchEntity.Details(
                     title,
@@ -37,13 +37,13 @@ public final class MatchDtos {
     }
 
     public record Update(
-            @NotBlank @Size(max = 50) String title,
-            @Size(max = 500) String description,
-            @NotNull LocalDateTime startAt,
-            @NotNull LocalDateTime endAt,
-            @NotNull @Min(1) Integer maxParticipant,
-            @NotNull SkillLevel skillLevel,
-            @NotNull GenderGroup genderGroup) {
+            @NotBlank(message = "필수입니다.") @Size(max = 50, message = "50자 이하여야 합니다.") String title,
+            @Size(max = 500, message = "500자 이하여야 합니다.") String description,
+            @NotNull(message = "필수입니다.") LocalDateTime startAt,
+            @NotNull(message = "필수입니다.") LocalDateTime endAt,
+            @NotNull(message = "필수입니다.") @Min(value = 1, message = "1 이상이어야 합니다.") Integer maxParticipant,
+            @NotNull(message = "필수입니다.") SkillLevel skillLevel,
+            @NotNull(message = "필수입니다.") GenderGroup genderGroup) {
         public MatchEntity.Details details(SportType sport) {
             return new MatchEntity.Details(
                     title,
@@ -58,16 +58,16 @@ public final class MatchDtos {
     }
 
     public record Search(
-            @Positive Long serviceId,
-            @Size(max = 50) String titleKeyword,
-            @Size(max = 500) String descriptionKeyword,
+            @Positive(message = "1 이상이어야 합니다.") Long serviceId,
+            @Size(max = 50, message = "50자 이하여야 합니다.") String titleKeyword,
+            @Size(max = 500, message = "500자 이하여야 합니다.") String descriptionKeyword,
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startAt,
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endAt,
-            @Min(1) Integer maxParticipant,
+            @Min(value = 1, message = "1 이상이어야 합니다.") Integer maxParticipant,
             SkillLevel skillLevel,
             SportType sportType,
             GenderGroup genderGroup,
-            @Size(max = 20) String region,
+            @Size(max = 20, message = "20자 이하여야 합니다.") String region,
             MatchStatus status,
             Boolean isFree) {}
 

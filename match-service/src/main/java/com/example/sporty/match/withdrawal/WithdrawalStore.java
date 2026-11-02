@@ -11,6 +11,8 @@ import java.util.*;
 public class WithdrawalStore {
     final JdbcTemplate jdbc;
     final ObjectMapper mapper;
+    private com.example.sporty.match.deposit.DepositSaga deposits;
+    public void setDeposits(com.example.sporty.match.deposit.DepositSaga value) { deposits=value; }
 
     public WithdrawalStore(JdbcTemplate jdbc, ObjectMapper mapper) {
         this.jdbc = jdbc;
@@ -69,7 +71,7 @@ public class WithdrawalStore {
         // for the match row owned by a concurrent hard delete.
         var matchIds =
                 jdbc.queryForList(
-                        "SELECT match_id FROM match_participants WHERE user_id=? ORDER BY match_id",
+                        "SELECT match_id FROM match_participants WHERE user_id=? AND participation_status IN ('PENDING','CONFIRMED') ORDER BY match_id",
                         Long.class,
                         userId);
         for (var matchId : matchIds) {
@@ -80,7 +82,7 @@ public class WithdrawalStore {
         // A consistent read could otherwise return that deleted membership under REPEATABLE READ.
         return jdbc.query(
                 "SELECT m.id,m.title,m.status,m.start_at,m.end_at,m.max_participant,p.role FROM"
-                    + " matches m JOIN match_participants p ON p.match_id=m.id WHERE p.user_id=?"
+                    + " matches m JOIN match_participants p ON p.match_id=m.id WHERE p.user_id=? AND p.participation_status IN ('PENDING','CONFIRMED')"
                     + " ORDER BY m.id FOR UPDATE",
                 (r, n) ->
                         new Match(
@@ -96,20 +98,24 @@ public class WithdrawalStore {
 
     public List<Long> recipients(long matchId) {
         return jdbc.queryForList(
-                "SELECT user_id FROM match_participants WHERE match_id=? ORDER BY"
-                        + " match_participant_id",
+                "SELECT user_id FROM match_participants WHERE match_id=? AND participation_status='CONFIRMED' ORDER BY"
+                        + " match_participant_id FOR UPDATE",
                 Long.class,
                 matchId);
     }
 
     public long owner(long matchId) {
         return jdbc.queryForObject(
-                "SELECT user_id FROM match_participants WHERE match_id=? AND role='OWNER'",
+                "SELECT user_id FROM match_participants WHERE match_id=? AND role='OWNER' AND participation_status='CONFIRMED' FOR UPDATE",
                 Long.class,
                 matchId);
     }
 
     public void cancel(long id, Instant now) {
+        if(deposits!=null && deposits.isEnabled()) {
+            var owner=jdbc.queryForObject("SELECT user_id FROM match_participants WHERE match_id=? AND role='OWNER'",Long.class,id);
+            deposits.withdrawal(id,owner,true);
+        }
         jdbc.update(
                 "UPDATE matches SET"
                     + " status='CANCELLED',cancel_reason='USER_WITHDRAWAL',cancelled_at=?,status_changed_at=?"
@@ -120,6 +126,7 @@ public class WithdrawalStore {
     }
 
     public void leave(long id, long userId) {
+        if(deposits!=null && deposits.isEnabled()) { deposits.withdrawal(id,userId,false); return; }
         jdbc.update(
                 "DELETE FROM match_participants WHERE match_id=? AND user_id=? AND"
                         + " role='PARTICIPANT'",
@@ -134,11 +141,9 @@ public class WithdrawalStore {
     /** Reopen a pre-start closed match only when cleanup has actually freed capacity. */
     public boolean reopen(Match match, Instant now) {
         if (!"CLOSED".equals(match.status())) return false;
-        long count =
-                jdbc.queryForObject(
-                        "SELECT COUNT(*) FROM match_participants WHERE match_id=?",
-                        Long.class,
-                        match.id());
+        long count = jdbc.queryForList(
+                "SELECT match_participant_id FROM match_participants WHERE match_id=? AND participation_status='CONFIRMED' FOR UPDATE",
+                Long.class,match.id()).size();
         if (count >= match.capacity()) return false;
         jdbc.update(
                 "UPDATE matches SET status='RECRUITING',status_changed_at=? WHERE id=?",

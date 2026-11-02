@@ -20,7 +20,12 @@ public interface MemberClient {
     List<Profile> profiles(@RequestParam("ids") List<Long> ids);
 
     record Member(
-            Long id, String gender, String status, String district, List<String> sportTypes) {}
+            Long id, String gender, String status, String district, List<String> sportTypes,
+            Boolean participationSuspended, java.time.LocalDateTime suspendedUntil) {
+        public Member(Long id, String gender, String status, String district, List<String> sportTypes) {
+            this(id, gender, status, district, sportTypes, false, null);
+        }
+    }
 
     record Profile(Long id, Long profileId, String nickname, String imageUrl) {}
 }

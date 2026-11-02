@@ -92,6 +92,9 @@ public class MatchRemoteChecks {
             throw unavailable(true);
         if (!"ACTIVE".equals(member.status()))
             throw problem(400, "USER_NOT_ACTIVE", "활동 가능한 회원이 아닙니다.");
+        if (Boolean.TRUE.equals(member.participationSuspended())
+                || (member.suspendedUntil() != null && member.suspendedUntil().isAfter(LocalDateTime.now(ZoneId.of("Asia/Seoul")))))
+            throw problem(403, "PARTICIPATION_SUSPENDED", "참가 정지 중인 회원입니다.");
         return member;
     }
 

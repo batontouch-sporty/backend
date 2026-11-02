@@ -21,6 +21,8 @@ public class WaitlistPromotion {
     private final MatchRemoteChecks checks;
     private final MemberLocks locks;
     private final ParticipationEvents events;
+    @org.springframework.beans.factory.annotation.Autowired private com.example.sporty.match.deposit.DepositSaga deposits;
+    @org.springframework.beans.factory.annotation.Autowired private org.springframework.context.ApplicationEventPublisher publisher;
 
     public WaitlistPromotion(
             MatchRepository matches,
@@ -42,6 +44,10 @@ public class WaitlistPromotion {
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public int promote(Long matchId) {
+        if(deposits.isEnabled()) {
+            publisher.publishEvent(new com.example.sporty.match.deposit.DepositPromotion.Vacancy(matchId));
+            return 0;
+        }
         var match = matches.findByIdForUpdate(matchId).orElseThrow();
         if (match.getStatus() != MatchStatus.CLOSED || !match.getStartAt().isAfter(now())) return 0;
         int promoted = 0;

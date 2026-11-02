@@ -28,7 +28,7 @@ public class ParticipationEvents {
     }
 
     public void joined(MatchEntity match, long userId, long current) {
-        var rows = participants.findAllByMatch_IdOrderByIdAsc(match.getId());
+        var rows = participants.findConfirmedForUpdate(match.getId());
         var fields = base(match);
         fields.put("userId", userId);
         fields.put("ownerId", owner(rows));
@@ -44,7 +44,7 @@ public class ParticipationEvents {
     }
 
     public void statusChanged(MatchEntity match, MatchStatus from, String reason) {
-        var rows = participants.findAllByMatch_IdOrderByIdAsc(match.getId());
+        var rows = participants.findConfirmedForUpdate(match.getId());
         var fields = base(match);
         fields.put("from", from.name());
         fields.put("to", match.getStatus().name());

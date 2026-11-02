@@ -52,3 +52,12 @@ fixtures. Identity counters may advance during tests even though records roll ba
 
 The existing dev profile still uses create-drop; use a validate/no-DDL profile when keeping
 catalog data across application restarts. These integration tests explicitly use validate.
+
+## Match minimum capacity (R8)
+
+`004_match_min_capacity_2.sql` changes the CHECK on an existing `match_db.matches`
+table to require at least two participants, including the owner. Apply it after the
+application accepts only capacity 2 or greater and after checking for existing
+capacity-1 rows. Stop on SQL errors. Fresh Compose installations use
+`docker/mariadb/schema.sql` and do not need 004. The earlier 001/002 scripts target
+the original `sporty` database and must not be run against `match_db`.

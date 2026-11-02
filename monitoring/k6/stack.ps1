@@ -55,13 +55,11 @@ try {
         }
         if (-not $ready) { throw 'Gateway did not serve the match list within the startup window.' }
     }
-    if ($Action -eq 'down' -and [IO.File]::Exists($keyPath)) {
-        [IO.File]::Delete($keyPath)
+    if ($Action -eq 'down') {
+        if (Test-Path -LiteralPath $tokens) { Remove-Item -LiteralPath $tokens }
+        if ([IO.File]::Exists($keyPath)) { [IO.File]::Delete($keyPath) }
     }
 } finally {
     foreach ($key in $previous.Keys) { [Environment]::SetEnvironmentVariable($key, $previous[$key]) }
     Pop-Location
-    if ($Action -eq 'down' -and (Test-Path -LiteralPath $tokens)) {
-        Remove-Item -LiteralPath $tokens
-    }
 }

@@ -214,7 +214,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "sum by (instance, name) (rate(resilience4j_circuitbreaker_calls_seconds_sum{job=\"sporty-services\",application=\"match-service\",name=~\"MemberClientgetLong|MemberClientprofilesList|FacilityClientgetLong\",kind=~\"successful|failed|ignored\"}[$__rate_interval])) / sum by (instance, name) (rate(resilience4j_circuitbreaker_calls_seconds_count{job=\"sporty-services\",application=\"match-service\",name=~\"MemberClientgetLong|MemberClientprofilesList|FacilityClientgetLong\",kind=~\"successful|failed|ignored\"}[$__rate_interval]))",
+                        "expr": "sum by (instance, name) (rate(resilience4j_circuitbreaker_calls_seconds_sum{job=\"sporty-services\",application=\"match-service\",name=~\"MemberClientgetLong|MemberClientprofilesList|FacilityClientgetLong\",kind=~\"successful|failed|ignored\"}[$__rate_interval])) / (sum by (instance, name) (rate(resilience4j_circuitbreaker_calls_seconds_count{job=\"sporty-services\",application=\"match-service\",name=~\"MemberClientgetLong|MemberClientprofilesList|FacilityClientgetLong\",kind=~\"successful|failed|ignored\"}[$__rate_interval])) > 0)",
                         "format": "time_series",
                         "instant": false,
                         "legendFormat": "{{instance}} / {{name}}",

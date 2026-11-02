@@ -4,7 +4,8 @@ WORKDIR /src
 COPY . .
 RUN --mount=type=cache,target=/root/.gradle sh gradlew --no-daemon bootJar -x :legacy-sporty:bootJar
 
-FROM eclipse-temurin:17-jre
+FROM eclipse-temurin:17-jre-alpine
+RUN apk add --no-cache curl
 COPY --from=build /src/match-service/build/libs/*.jar /app.jar
 USER nobody
 HEALTHCHECK --interval=5s --timeout=3s --start-period=120s --retries=12 CMD curl -fs http://localhost:8082/actuator/health

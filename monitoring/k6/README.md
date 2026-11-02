@@ -2,6 +2,10 @@
 
 Windows PowerShell, Docker Compose, Python 3, 저장소 루트의 개발용 `.env`가 필요하다. 조회와 참가는 Gateway를 통과한다. k6는 `grafana/k6:1.0.0` 이미지를 사용한다.
 
+## 테스트용 인증 키
+
+`stack.ps1 up`은 첫 기동 시 임의의 JWT 서명 키를 생성해 전용 Gateway와 회원 서비스에 전달한다. 키는 현재 Windows 사용자의 `%LOCALAPPDATA%/Sporty/sporty-k6-90/jwt.key`에 보관되며 같은 스택을 다시 기동할 때 재사용한다. `down`이 성공하면 키도 삭제되므로 다음 시연은 새 키로 시작한다. 정리에 실패하면 같은 명령을 다시 실행한다.
+
 ## 실행
 
 저장소 루트에서 아래 순서로 실행한다. `up`은 전용 Compose 프로젝트 `sporty-k6-90`을 빌드한다. Gateway는 18090, Prometheus는 19090, Grafana는 13001번 포트를 사용한다. 기동 직후 Eureka에 서비스가 등록될 때까지 다음 URL이 200인지 확인한다.

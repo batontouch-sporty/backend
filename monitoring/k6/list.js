@@ -13,9 +13,11 @@ export const options = {
   thresholds: { checks: ['rate==1'], http_req_failed: ['rate==0'] },
 };
 
+/** Check that A10 returns a nonempty list, pacing requests during the load scenario. */
 export default function () {
   const response = http.get(base + '/match-service/api/matches');
   check(response, {
+    /** Reject malformed JSON and empty responses even when the server reports success. */
     'A10 returns a nonempty match list': (r) => {
       if (r.status !== 200) return false;
       try {

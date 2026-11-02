@@ -13,6 +13,7 @@ RUN = Path(__file__).parent / ".run"
 
 
 def sql(statement):
+    """Run SQL in the dedicated MariaDB container and return tab-separated rows."""
     result = subprocess.run(
         ["docker", "exec", "-i", PROJECT + "-mariadb-1", "sh", "-c",
          'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" exec mariadb -uroot -BN --default-character-set=utf8mb4'],
@@ -22,6 +23,7 @@ def sql(statement):
 
 
 def post(path, data, token=None):
+    """Send JSON through the test Gateway with optional bearer authentication."""
     headers = {"Content-Type": "application/json"}
     if token:
         headers["Authorization"] = "Bearer " + token
@@ -32,6 +34,7 @@ def post(path, data, token=None):
 
 
 def prepare():
+    """Create an owner-only match and save tokens for 100 distinct participants."""
     run_id = secrets.token_hex(4)
     password = secrets.token_urlsafe(12)
     facility = int(sql(f"""
@@ -66,6 +69,7 @@ def prepare():
 
 
 def snapshot(match):
+    """Read status, capacity, participant count, unique users and owner count."""
     fields = sql(f"""SELECT m.status,m.max_participant,COUNT(p.user_id),
       COUNT(DISTINCT p.user_id),SUM(p.role='OWNER') FROM match_db.matches m
       JOIN match_db.match_participants p ON p.match_id=m.id
@@ -74,6 +78,7 @@ def snapshot(match):
 
 
 def verify():
+    """Require nine successful joins and ten distinct DB participants including the owner."""
     fixture = json.loads((RUN / "participants.json").read_text())
     match = fixture["matchId"]
     metrics = json.loads((RUN / "join.json").read_text())["metrics"]

@@ -24,6 +24,7 @@ export const options = {
   },
 };
 
+/** Submit one authenticated join per VU and count creations, capacity rejections and other errors. */
 export default function () {
   const member = members[exec.vu.idInTest - 1];
   const r = http.post(base + '/match-service/api/matches/' + matchId + '/participants', null, {

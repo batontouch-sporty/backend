@@ -25,7 +25,7 @@ ALTER TABLE user_db.`user`
 
 -- 2. point_history: 요청 ID 기반 중복 방지로 교체. match_id 단독 인덱스는 R10에서 쓰지 않아 제거한다(R9 최종본에 없으면 건너뜀).
 ALTER TABLE user_db.point_history
-  DROP INDEX uk_point_history_user_match,
+  DROP INDEX IF EXISTS uk_point_history_user_match,
   DROP INDEX IF EXISTS idx_point_history_match,
   DROP CONSTRAINT IF EXISTS ck_point_history_reason,
   DROP CONSTRAINT IF EXISTS ck_point_history_match,

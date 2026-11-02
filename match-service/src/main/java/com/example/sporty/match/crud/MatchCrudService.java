@@ -55,6 +55,7 @@ public class MatchCrudService {
     @Transactional
     public Long create(Long userId, MatchDtos.Create request) {
         validId(userId);
+        validCapacity(request.maxParticipant());
         validPeriod(request.startAt(), request.endAt());
         locks.lock(userId);
         var match = facility.create(userId, request.details(), request.serviceId());
@@ -63,10 +64,6 @@ public class MatchCrudService {
         matches.saveAndFlush(match);
         participants.saveAndFlush(
                 new MatchParticipantEntity(match, userId, MatchParticipantRole.OWNER));
-        if (match.getMaxParticipant() == 1) {
-            match.closeRecruitment(now());
-            events.statusChanged(match, MatchStatus.RECRUITING, "정원 도달로 모집 마감");
-        }
         return match.getId();
     }
 
@@ -160,6 +157,7 @@ public class MatchCrudService {
     public MatchDtos.Detail update(Long matchId, Long userId, MatchDtos.Update request) {
         validId(matchId);
         validId(userId);
+        validCapacity(request.maxParticipant());
         // The facility call may take seconds. Finish it before holding the match row lock.
         var currentMatch = matches.findById(matchId).orElseThrow(MatchCrudService::notFound);
         owner(matchId, userId, "MATCH_MODIFY_FORBIDDEN");
@@ -323,6 +321,11 @@ public class MatchCrudService {
     private static void validPeriod(LocalDateTime start, LocalDateTime end) {
         if (start == null || end == null || !end.isAfter(start) || !start.isAfter(now()))
             throw problem(400, "INVALID_INPUT", "미래의 시작 시각과 시작 이후의 종료 시각을 입력해주세요.");
+    }
+
+    private static void validCapacity(Integer capacity) {
+        if (capacity == null || capacity < 2)
+            throw problem(400, "INVALID_INPUT", "정원은 2명 이상이어야 합니다.");
     }
 
     private static void validId(Long id) {

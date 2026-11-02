@@ -145,15 +145,16 @@ class MatchCrudTest {
     }
 
     @Test
-    void ownerCountsTowardCapacityOneAndCloseEvent() throws Exception {
-        Long id = service.create(1L, request(1));
-        assertThat(matches.findById(id).orElseThrow().getStatus()).isEqualTo(MatchStatus.CLOSED);
-        var event =
-                mapper.readTree(
-                        jdbc.queryForObject("SELECT payload FROM outbox_event", String.class));
-        assertThat(event.path("ownerId").asLong()).isEqualTo(1L);
-        assertThat(event.path("to").asText()).isEqualTo("CLOSED");
-        assertThat(event.path("participantIds")).hasSize(1);
+    void minimumCapacityTwoStartsRecruitingAndRejectsDirectServiceCall() {
+        Long id = service.create(1L, request(2));
+        assertThat(matches.findById(id).orElseThrow().getStatus()).isEqualTo(MatchStatus.RECRUITING);
+        assertThat(participants.countByMatch_Id(id)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM outbox_event", Integer.class))
+                .isZero();
+        assertThatThrownBy(() -> service.create(1L, request(1)))
+                .isInstanceOfSatisfying(
+                        MatchCrudProblem.class,
+                        error -> assertThat(error.code()).isEqualTo("INVALID_INPUT"));
     }
 
     @Test
@@ -164,14 +165,23 @@ class MatchCrudTest {
                                 .content(mapper.writeValueAsString(request(3))))
                 .andExpect(status().isUnauthorized());
         var body = mapper.valueToTree(request(3));
-        ((com.fasterxml.jackson.databind.node.ObjectNode) body).put("maxParticipant", 0);
+        ((com.fasterxml.jackson.databind.node.ObjectNode) body).put("maxParticipant", 1);
         mvc.perform(
                         post("/api/matches")
                                 .header("X-User-Id", "1")
                                 .contentType("application/json")
                                 .content(body.toString()))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"))
+                .andExpect(jsonPath("$.message").value("maxParticipant: 2 이상이어야 합니다."));
+        Long matchId = service.create(1L, request(3));
+        mvc.perform(
+                        put("/api/matches/" + matchId)
+                                .header("X-User-Id", "1")
+                                .contentType("application/json")
+                                .content(mapper.writeValueAsString(update(1))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("maxParticipant: 2 이상이어야 합니다."));
         mvc.perform(get("/api/matches").param("sportType", "NOT_A_SPORT"))
                 .andExpect(status().isBadRequest());
         mvc.perform(get("/api/matches").param("status", "FOO"))
@@ -333,7 +343,7 @@ class MatchCrudTest {
         assertThatThrownBy(() -> service.update(id, 1L, update(1)))
                 .isInstanceOfSatisfying(
                         MatchCrudProblem.class,
-                        e -> assertThat(e.code()).isEqualTo("MATCH_CAPACITY_BELOW_CURRENT"));
+                        e -> assertThat(e.code()).isEqualTo("INVALID_INPUT"));
         when(checks.checkFacility(anyLong(), any(), any()))
                 .thenThrow(
                         new MatchDependencyException(
@@ -402,15 +412,19 @@ class MatchCrudTest {
     }
 
     @Test
-    void outboxFailureRollsBackOwnerAndCreatedMatch() {
+    void outboxFailureRollsBackCapacityChange() {
+        Long id = service.create(1L, request(3));
+        participant(id, 2L);
         jdbc.execute(
                 "ALTER TABLE outbox_event ADD CONSTRAINT reject_crud_event CHECK(event_type <>"
                     + " 'match.status-changed.v1')");
         try {
-            assertThatThrownBy(() -> service.create(1L, request(1)))
+            assertThatThrownBy(() -> service.update(id, 1L, update(2)))
                     .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
-            assertThat(matches.count()).isZero();
-            assertThat(participants.count()).isZero();
+            assertThat(matches.findById(id).orElseThrow().getMaxParticipant()).isEqualTo(3);
+            assertThat(matches.findById(id).orElseThrow().getStatus())
+                    .isEqualTo(MatchStatus.RECRUITING);
+            assertThat(participants.count()).isEqualTo(2);
         } finally {
             jdbc.execute("ALTER TABLE outbox_event DROP CONSTRAINT reject_crud_event");
         }

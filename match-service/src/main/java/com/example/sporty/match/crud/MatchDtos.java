@@ -19,7 +19,7 @@ public final class MatchDtos {
             @Size(max = 500, message = "500자 이하여야 합니다.") String description,
             @NotNull(message = "필수입니다.") LocalDateTime startAt,
             @NotNull(message = "필수입니다.") LocalDateTime endAt,
-            @NotNull(message = "필수입니다.") @Min(value = 1, message = "1 이상이어야 합니다.") Integer maxParticipant,
+            @NotNull(message = "필수입니다.") @Min(value = 2, message = "2 이상이어야 합니다.") Integer maxParticipant,
             @NotNull(message = "필수입니다.") SkillLevel skillLevel,
             @NotNull(message = "필수입니다.") SportType sportType,
             @NotNull(message = "필수입니다.") GenderGroup genderGroup) {
@@ -41,7 +41,7 @@ public final class MatchDtos {
             @Size(max = 500, message = "500자 이하여야 합니다.") String description,
             @NotNull(message = "필수입니다.") LocalDateTime startAt,
             @NotNull(message = "필수입니다.") LocalDateTime endAt,
-            @NotNull(message = "필수입니다.") @Min(value = 1, message = "1 이상이어야 합니다.") Integer maxParticipant,
+            @NotNull(message = "필수입니다.") @Min(value = 2, message = "2 이상이어야 합니다.") Integer maxParticipant,
             @NotNull(message = "필수입니다.") SkillLevel skillLevel,
             @NotNull(message = "필수입니다.") GenderGroup genderGroup) {
         public MatchEntity.Details details(SportType sport) {

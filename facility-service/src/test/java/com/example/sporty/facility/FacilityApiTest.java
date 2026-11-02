@@ -165,6 +165,76 @@ class FacilityApiTest {
                 .andExpect(jsonPath("$.code").value("SERVICE_NOT_FOUND"));
     }
 
+    // ---------- I4 내부 시설 후보 ----------
+
+    ServiceEntity saveService(LocationEntity location, String serviceId, String name) {
+        return services.save(ServiceEntity.builder()
+                .location(location).serviceId(serviceId).name(name).status("접수중")
+                .startTime(LocalTime.of(9, 0)).endTime(LocalTime.of(22, 0)).isFree(true)
+                .url("https://yeyak.seoul.go.kr/" + serviceId).build());
+    }
+
+    @Test
+    void 시설_후보는_자치구_코드와_종목으로_거른_활성_시설() throws Exception {
+        LocationEntity songpaFutsal = locations.save(LocationEntity.builder()
+                .region("송파구").name("송파 풋살장").facilityName("풋살장").build());
+        saveService(songpaFutsal, "S0100", "송파 풋살장 A");
+
+        mvc.perform(get("/internal/facilities").param("district", "SONGPA").param("sport", "BASKETBALL"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].id").value(activeService.getId()))
+                .andExpect(jsonPath("$[0].name").value("잠실 실내체육관 농구장"))
+                .andExpect(jsonPath("$[0].locationName").value("잠실 실내체육관"))
+                .andExpect(jsonPath("$[0].region").value("송파구"))
+                .andExpect(jsonPath("$[0].startTime").value("09:00:00"))
+                .andExpect(jsonPath("$[0].isFree").value(false))
+                .andExpect(jsonPath("$[0].url").value("https://yeyak.seoul.go.kr/1"));
+    }
+
+    @Test
+    void 시설_후보는_비활성_시설을_빼고_최대_5개() throws Exception {
+        // 마포구 풋살장(setUp)은 비활성이라 빠진다
+        LocationEntity mapoFutsal = locations.save(LocationEntity.builder()
+                .region("마포구").name("마포 풋살장").facilityName("풋살장").build());
+        for (int i = 0; i < 7; i++) {
+            saveService(mapoFutsal, "S02" + i, "마포 풋살장 " + i);
+        }
+
+        mvc.perform(get("/internal/facilities").param("district", "MAPO").param("sport", "FUTSAL"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(5)))
+                .andExpect(jsonPath("$[0].name").value("마포 풋살장 0"));
+    }
+
+    @Test
+    void 자치구만_주면_그_자치구의_활성_시설() throws Exception {
+        mvc.perform(get("/internal/facilities").param("district", "SONGPA"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].region").value("송파구"));
+    }
+
+    @Test
+    void 시설_종류가_없는_종목이나_모르는_값이면_빈_배열() throws Exception {
+        mvc.perform(get("/internal/facilities").param("district", "SONGPA").param("sport", "RUNNING"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(0)));
+        mvc.perform(get("/internal/facilities").param("district", "JEJU").param("sport", "SQUASH"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(0)));
+        // 하나라도 모르는 코드면 나머지 조건만으로 넓게 조회하지 않는다
+        mvc.perform(get("/internal/facilities").param("district", "JEJU").param("sport", "BASKETBALL"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(0)));
+        mvc.perform(get("/internal/facilities").param("district", "SONGPA").param("sport", "SQUASH"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(0)));
+        mvc.perform(get("/internal/facilities"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(0)));
+    }
+
     // ---------- 동기화 ----------
 
     @Test

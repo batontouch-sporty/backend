@@ -108,16 +108,69 @@ class StartingSoonNotificationTest {
         assertThat(only(OTHER).getType()).isEqualTo(NotificationType.STARTING_SOON);
     }
 
-    // 같은 모임 취소 알림을 이미 받은 회원은 건너뛰고, 받지 않은 회원에게는 보낸다
+    // 취소 이벤트를 받은 모임이면 리마인더 대상 전원을 건너뛴다(취소 알림을 받지 않은 회원 포함)
     @Test
-    void skipsMembersWhoAlreadyGotCancelledNotice() {
+    void cancelledMatchIsSkippedForEveryone() {
         service.handleMatchStatusChanged(new MatchStatusChangedEvent(newEventId(), 57L, "주말 풋살",
                 "RECRUITING", "CANCELLED", OWNER, List.of(USER), "우천으로 취소"));
-        service.handleStartingSoon(new StartingSoonEvent(newEventId(), 57L, "주말 풋살",
+        String reminder = newEventId();
+        service.handleStartingSoon(new StartingSoonEvent(reminder, 57L, "주말 풋살",
                 "2026-11-03T19:00:00+09:00", List.of(OWNER, USER)));
 
         assertThat(only(USER).getType()).isEqualTo(NotificationType.STATUS_CHANGED);
-        assertThat(only(OWNER).getType()).isEqualTo(NotificationType.STARTING_SOON);
+        assertThat(notifications.findTop50ByRecipientUserIdOrderByCreatedAtDescIdDesc(OWNER)).isEmpty();
+        assertThat(processedEvents.existsById(reminder)).isTrue();
+    }
+
+    // [리뷰 #84 ②] 리마인더 저장 뒤 참가 취소한 회원은 모임 취소 이벤트의 participantIds에 없어 취소 알림을 못 받는다.
+    // 그래도 모임 단위로 판단하므로 그 회원에게 리마인더가 가지 않는다.
+    @Test
+    void formerParticipantMissingFromCancelEventGetsNoReminder() {
+        service.handleMatchStatusChanged(new MatchStatusChangedEvent(newEventId(), 57L, "주말 풋살",
+                "RECRUITING", "CANCELLED", OWNER, List.of(OWNER), null));
+        service.handleStartingSoon(new StartingSoonEvent(newEventId(), 57L, "주말 풋살",
+                "2026-11-03T19:00:00+09:00", List.of(OWNER, USER)));
+
+        assertThat(notifications.findTop50ByRecipientUserIdOrderByCreatedAtDescIdDesc(USER)).isEmpty();
+        assertThat(only(OWNER).getType()).isEqualTo(NotificationType.STATUS_CHANGED);
+    }
+
+    // 참가자가 없어 알림을 하나도 만들지 않은 취소 이벤트도 모임을 취소로 표시한다
+    @Test
+    void cancelWithoutRecipientsStillMarksMatch() {
+        service.handleMatchStatusChanged(new MatchStatusChangedEvent(newEventId(), 57L, "주말 풋살",
+                "RECRUITING", "CANCELLED", OWNER, List.of(), null));
+        service.handleStartingSoon(new StartingSoonEvent(newEventId(), 57L, "주말 풋살",
+                "2026-11-03T19:00:00+09:00", List.of(OWNER, USER)));
+
+        assertThat(notifications.findAll()).isEmpty();
+    }
+
+    // [리뷰 #84 ①] 제목에 「모임이 취소됐어요」가 들어 있어도 실제 취소 이벤트가 없으면 리마인더를 보낸다
+    @Test
+    void titleContainingCancelPhraseDoesNotBlockReminder() {
+        String title = "모임이 취소됐어요 연습 경기";
+        service.handleMatchStatusChanged(new MatchStatusChangedEvent(newEventId(), 57L, title,
+                "RECRUITING", "CLOSED", OWNER, List.of(OWNER, USER), null));
+        service.handleStartingSoon(new StartingSoonEvent(newEventId(), 57L, title,
+                "2026-11-03T19:00:00+09:00", List.of(OWNER, USER)));
+
+        assertThat(notifications.findTop50ByRecipientUserIdOrderByCreatedAtDescIdDesc(OWNER))
+                .extracting(NotificationEntity::getType)
+                .containsExactlyInAnyOrder(NotificationType.STATUS_CHANGED, NotificationType.STARTING_SOON);
+        assertThat(only(USER).getType()).isEqualTo(NotificationType.STARTING_SOON);
+    }
+
+    // 같은 모임 취소 이벤트가 두 번 와도(다른 eventId) 실패 없이 처리된다
+    @Test
+    void repeatedCancelEventsForSameMatchAreFine() {
+        service.handleMatchStatusChanged(new MatchStatusChangedEvent(newEventId(), 57L, "주말 풋살",
+                "RECRUITING", "CANCELLED", OWNER, List.of(USER), null));
+        service.handleMatchStatusChanged(new MatchStatusChangedEvent(newEventId(), 57L, "주말 풋살",
+                "CLOSED", "CANCELLED", OWNER, List.of(USER), null));
+
+        assertThat(notifications.findTop50ByRecipientUserIdOrderByCreatedAtDescIdDesc(USER)).hasSize(2);
+        assertThat(processedEvents.existsById("match-cancelled:57")).isTrue();
     }
 
     // 마감 알림(같은 STATUS_CHANGED 종류)은 취소가 아니므로 시작 전 알림을 막지 않는다

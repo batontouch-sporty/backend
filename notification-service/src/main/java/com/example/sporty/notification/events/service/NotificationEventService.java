@@ -39,8 +39,11 @@ public class NotificationEventService {
     private static final int BODY_MAX = 500;
     private static final String WITHDRAWAL_TITLE = "회원 탈퇴";
     private static final Pattern CODE_LIKE = Pattern.compile("[A-Z0-9_]+");
-    // 취소 알림 본문에 들어가는 문구. 시작 전 알림을 건너뛸 때 이 문구로 취소 알림을 찾으므로 바꿀 때 함께 확인한다.
-    private static final String CANCELLED_PHRASE = "모임이 취소됐어요";
+    // 취소된 모임 표시. CANCELLED 이벤트를 처리할 때 processed_events에 "match-cancelled:<matchId>" 한 줄을 남기고,
+    // 시작 전 알림은 이 표시가 있으면 모임 단위로 건너뛴다. 이벤트 ID(UUID)와 겹치지 않도록 접두어를 붙인다.
+    // 취소 알림을 받은 회원 기준이 아니라 모임 기준이라, 취소 전에 참가를 취소한 회원에게도 리마인더가 가지 않는다.
+    private static final String CANCELLED_MARKER_PREFIX = "match-cancelled:";
+    private static final String CANCELLED_MARKER_TYPE = "match.cancelled";
     // 모임 시각은 서울 기준으로 보여 준다(매칭 서비스 start_at도 서울 기준).
     private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
     private static final DateTimeFormatter HOUR_MINUTE = DateTimeFormatter.ofPattern("HH:mm");
@@ -89,7 +92,7 @@ public class NotificationEventService {
         };
         String message = switch (to) {
             case "CLOSED" -> quote(event.title()) + "모임 모집이 마감됐어요";
-            case "CANCELLED" -> quote(event.title()) + CANCELLED_PHRASE + reasonSuffix(event.reason());
+            case "CANCELLED" -> quote(event.title()) + "모임이 취소됐어요" + reasonSuffix(event.reason());
             default -> null;
         };
 
@@ -101,6 +104,9 @@ public class NotificationEventService {
             }
         }
 
+        if ("CANCELLED".equals(to)) {
+            markCancelled(event.matchId());
+        }
         saveAll(event.eventId(), KafkaTopics.MATCH_STATUS_CHANGED, notifications);
     }
 
@@ -143,7 +149,7 @@ public class NotificationEventService {
     }
 
     // match.starting-soon.v1 → 확정 참가자 전원(방장 포함)에게 시작 전 알림.
-    // 같은 모임 알림은 회원당 한 번만, 취소 알림을 이미 받은 모임은 건너뛴다.
+    // 같은 모임 알림은 회원당 한 번만, 이미 취소 이벤트를 받은 모임은 통째로 건너뛴다.
     @Transactional
     public void handleStartingSoon(StartingSoonEvent event) {
         requireEventId(event.eventId());
@@ -161,6 +167,9 @@ public class NotificationEventService {
         } else if (!startAt.isAfter(now)) {
             log.info("이미 시작한 모임이라 시작 전 알림을 보내지 않음: eventId={}, matchId={}, startAt={}",
                     event.eventId(), event.matchId(), event.startAt());
+        } else if (isCancelled(event.matchId())) {
+            // 매칭 서비스는 이벤트를 저장한 뒤 모임이 취소돼도 이벤트를 거둬들이지 않는다.
+            log.info("취소된 모임이라 시작 전 알림을 보내지 않음: eventId={}, matchId={}", event.eventId(), event.matchId());
         } else {
             String body = quote(event.title()) + "모임이 " + dayLabel(startAt.toLocalDate(), now.toLocalDate())
                     + " " + startAt.format(HOUR_MINUTE) + "에 시작해요";
@@ -176,19 +185,25 @@ public class NotificationEventService {
         saveAll(event.eventId(), KafkaTopics.MATCH_STARTING_SOON, notifications);
     }
 
-    // 이미 같은 모임 시작 전 알림을 받았거나, 그 모임 취소 알림을 받았으면 보내지 않는다.
-    // 매칭 서비스는 이벤트를 저장한 뒤 모임이 취소돼도 이벤트를 거둬들이지 않는다.
+    // 이미 같은 모임 시작 전 알림을 받았으면 다시 보내지 않는다.
     private boolean shouldRemind(Long recipient, Long matchId) {
-        if (notificationRepository.existsByRecipientUserIdAndTargetMatchIdAndType(
-                recipient, matchId, NotificationType.STARTING_SOON)) {
-            return false;
+        return !notificationRepository.existsByRecipientUserIdAndTargetMatchIdAndType(
+                recipient, matchId, NotificationType.STARTING_SOON);
+    }
+
+    // 취소 이벤트를 받은 모임을 표시한다. 같은 모임 취소가 여러 번 와도 한 줄만 남긴다.
+    private void markCancelled(Long matchId) {
+        if (!isPositive(matchId)) {
+            return;
         }
-        if (notificationRepository.existsByRecipientUserIdAndTargetMatchIdAndTypeAndBodyContaining(
-                recipient, matchId, NotificationType.STATUS_CHANGED, CANCELLED_PHRASE)) {
-            log.info("취소된 모임이라 시작 전 알림을 보내지 않음: userId={}, matchId={}", recipient, matchId);
-            return false;
+        String marker = CANCELLED_MARKER_PREFIX + matchId;
+        if (!processedEventRepository.existsById(marker)) {
+            processedEventRepository.save(new ProcessedEventEntity(marker, CANCELLED_MARKER_TYPE));
         }
-        return true;
+    }
+
+    private boolean isCancelled(Long matchId) {
+        return processedEventRepository.existsById(CANCELLED_MARKER_PREFIX + matchId);
     }
 
     // 오프셋이 있는 시각만 받는다(계약). 서울 시각으로 바꿔 날짜·시간을 보여 준다.

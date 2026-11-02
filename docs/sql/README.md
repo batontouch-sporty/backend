@@ -61,3 +61,18 @@ application accepts only capacity 2 or greater and after checking for existing
 capacity-1 rows. Stop on SQL errors. Fresh Compose installations use
 `docker/mariadb/schema.sql` and do not need 004. The earlier 001/002 scripts target
 the original `sporty` database and must not be run against `match_db`.
+
+Run the entire 004 file with the MariaDB CLI in batch mode (for example, log in
+with `mariadb --abort-source-on-error --host=<host> --user=<migration-user> --password`
+and run `SOURCE docs/sql/004_match_min_capacity_2.sql;`). Do not use `--force` or
+split the file on semicolons: the anonymous `BEGIN NOT ATOMIC` block requires
+`DELIMITER` support. It rechecks for capacity-1 rows and raises SQLSTATE 45000
+without executing ALTER if any exist. The block creates no stored procedure.
+Pause match writes through verification; the preflight and DDL are not one
+atomic transaction. A nonzero exit/error is a failed migration, not success.
+
+Verified in a disposable MariaDB 11.4 instance: an existing capacity-1 row raises
+45000 and preserves the old CHECK; a SELECT-only account gets the same guard
+error (the ALTER branch is not executed). With no invalid rows, application and
+reapplication succeed; capacity 1 is rejected by CHECK and capacity 2 is accepted.
+Anonymous-block syntax: [MariaDB documentation](https://mariadb.com/docs/server/reference/sql-statements/programmatic-compound-statements/using-compound-statements-outside-of-stored-programs).

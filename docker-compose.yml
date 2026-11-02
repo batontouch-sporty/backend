@@ -1,20 +1,11 @@
 name: sporty
 
-# 컨테이너 안에서는 호스트 포트가 아니라 내부 포트로 붙으므로 *_HOST_PORT를 고정한다.
+# 접속 주소·추적 설정은 config-repo의 <서비스명>-dev.yml에 있다. 여기에는 프로필·Config 주소·시간대·비밀값만 둔다.
 x-app-env: &app-env
   SPRING_PROFILES_ACTIVE: dev
   TZ: Asia/Seoul
   JAVA_TOOL_OPTIONS: "-Duser.timezone=Asia/Seoul"
   CONFIG_SERVER_URL: http://config-service:8888
-  EUREKA_URL: http://discovery-service:8761/eureka
-  # 앱 컨테이너는 호스트 포트가 아니라 Compose 서비스명과 내부 포트로 span을 전송한다.
-  MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://zipkin:9411/api/v2/spans
-  MANAGEMENT_TRACING_SAMPLING_PROBABILITY: "1.0"
-  MANAGEMENT_OBSERVATIONS_ENABLE_TASKS: "false"
-  MARIADB_HOST_PORT: 3306
-  REDIS_HOST: redis
-  REDIS_HOST_PORT: 6379
-  SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
 
 x-app: &app
   environment: *app-env
@@ -41,6 +32,11 @@ services:
       <<: *app-env
       # GitHub 연결이 끊겨도 config 때문에 전체 기동이 막히지 않게 health에서 저장소 검사를 뺀다.
       SPRING_CLOUD_CONFIG_SERVER_HEALTH_ENABLED: "false"
+      # config-service 자신의 설정은 Config 저장소에서 받지 않으므로 Eureka 주소를 직접 넣는다.
+      EUREKA_URL: http://discovery-service:8761/eureka
+    # IDE로 띄운 서비스(local 프로필)가 설정을 받을 수 있게 호스트에 연다.
+    ports:
+      - "127.0.0.1:${CONFIG_HOST_PORT:-8888}:8888"
     depends_on:
       discovery-service:
         condition: service_healthy
@@ -62,7 +58,6 @@ services:
     build: {context: ., dockerfile: user-service/Dockerfile}
     environment:
       <<: *app-env
-      USER_DB_HOST: mariadb
       USER_APP_PASSWORD: ${USER_APP_PASSWORD:?}
       JWT_SECRET_KEY: *jwt
       # 개발·시연용 관리자 초기 계정. 비어 있으면 만들지 않고 정상 기동한다.
@@ -75,16 +70,13 @@ services:
     build: {context: ., dockerfile: match-service/Dockerfile}
     environment:
       <<: *app-env
-      MATCH_DB_HOST: mariadb
       MATCH_APP_PASSWORD: ${MATCH_APP_PASSWORD:?}
-      MATCH_WITHDRAWAL_ENABLED: "true"
 
   facility-service:
     <<: *app
     build: {context: ., dockerfile: facility-service/Dockerfile}
     environment:
       <<: *app-env
-      FACILITY_DB_HOST: mariadb
       FACILITY_APP_PASSWORD: ${FACILITY_APP_PASSWORD:?}
       # 비어 있어도 기동한다. 비면 서울시 시설 동기화만 건너뛴다.
       PUBLIC_DATA_API_KEY: ${PUBLIC_DATA_API_KEY:-}
@@ -102,7 +94,6 @@ services:
     build: {context: ., dockerfile: notification-service/Dockerfile}
     environment:
       <<: *app-env
-      NOTIFICATION_DB_HOST: mariadb
       NOTIFICATION_APP_PASSWORD: ${NOTIFICATION_APP_PASSWORD:?}
 
   mariadb:

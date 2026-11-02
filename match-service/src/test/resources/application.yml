@@ -1,0 +1,61 @@
+# 테스트 전용. main의 application.yml 대신 이 파일을 읽어 Config Server 없이 돈다.
+# 값은 config-repo의 match-service.yml과 같게 둔다. 그쪽을 바꾸면 테스트에 필요한 값도 여기 맞춘다.
+# DB는 각 테스트가 H2로 바꾼다.
+spring:
+  application:
+    name: match-service
+  cloud:
+    config:
+      enabled: false
+    openfeign:
+      circuitbreaker:
+        enabled: true
+      client:
+        config:
+          matchMemberClient:
+            connectTimeout: ${MATCH_USER_CONNECT_TIMEOUT_MS:1000}
+            readTimeout: ${MATCH_USER_READ_TIMEOUT_MS:2000}
+          matchFacilityClient:
+            connectTimeout: ${MATCH_FACILITY_CONNECT_TIMEOUT_MS:1000}
+            readTimeout: ${MATCH_FACILITY_READ_TIMEOUT_MS:2000}
+  datasource:
+    url: jdbc:mariadb://${MATCH_DB_HOST:localhost}:${MARIADB_HOST_PORT:3306}/match_db
+    username: ${MATCH_DB_USERNAME:match_app}
+    password: ${MATCH_APP_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: ${MATCH_DB_DDL_AUTO:validate}
+
+management:
+  health:
+    db:
+      enabled: ${MATCH_DB_HEALTH_ENABLED:true}
+
+match:
+  starting-soon:
+    enabled: ${MATCH_STARTING_SOON_ENABLED:true}
+    delay-ms: ${MATCH_STARTING_SOON_DELAY_MS:60000}
+    initial-delay-ms: ${MATCH_STARTING_SOON_INITIAL_DELAY_MS:60000}
+  withdrawal:
+    enabled: ${MATCH_WITHDRAWAL_ENABLED:false}
+  clients:
+    user:
+      url: ${MATCH_USER_SERVICE_URL:}
+    facility:
+      url: ${MATCH_FACILITY_SERVICE_URL:}
+
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10s
+        permittedNumberOfCallsInHalfOpenState: 2
+        ignoreExceptions:
+          - feign.FeignException$NotFound
+  timelimiter:
+    configs:
+      default:
+        timeoutDuration: 3s

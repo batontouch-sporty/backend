@@ -11,7 +11,7 @@
 ## API 변경
 
 - A9 생성, A14 참가: HTTP 202 `{requestId, matchId, status:"PENDING"}`. 방장 requestId는 matches.creation_request_id와 같다.
-- `GET /api/matches/requests/{requestId}`: 본인 요청만 200. 다른 회원/없는 요청 404 REQUEST_NOT_FOUND, 미인증 401.
+- `GET /api/matches/requests/{requestId}`: 본인의 현재 참가 행에 연결된 요청만 200. 잘못된 UUID는 400 INVALID_INPUT, 없는 요청·다른 회원·재신청으로 교체된 요청은 404 PARTICIPATION_REQUEST_NOT_FOUND, 미인증은 401. 이전 요청의 Outbox와 보상 처리는 계속 보존한다.
 - 상태 응답: requestId, matchId, requestType(CREATE/JOIN/PROMOTION), status(PENDING/CONFIRMED/FAILED/CANCELLED), refundStatus(NOT_REQUIRED/PENDING/COMPLETED), failureCode, failureMessage.
 - A15: 시작 전 취소만 204. CANCELLED 변경과 반환 Outbox를 같은 트랜잭션으로 저장한다. 반환 완료를 기다리지 않는다. 시작 후 400 MATCH_ALREADY_STARTED.
 - A13/A17: 취소 알림 대상을 먼저 확정하고, PENDING/CONFIRMED 요청별 MATCH_CANCELLED 반환을 기록한다.

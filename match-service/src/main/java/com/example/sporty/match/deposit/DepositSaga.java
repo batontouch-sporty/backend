@@ -59,8 +59,17 @@ public class DepositSaga {
 
     @Transactional(readOnly=true)
     public Status status(String requestId,long userId) {
-        var r=store.get(requestId);
-        if(r==null || r.userId!=userId) throw new ParticipationProblem(404,"REQUEST_NOT_FOUND","요청을 찾을 수 없습니다.");
+        String canonical;
+        try {
+            canonical=UUID.fromString(requestId).toString();
+            if(!canonical.equalsIgnoreCase(requestId)) throw new IllegalArgumentException();
+        } catch(RuntimeException e) {
+            throw new ParticipationProblem(400,"INVALID_INPUT","요청 ID 형식을 확인해주세요.");
+        }
+        var r=store.get(canonical);
+        if(r==null || r.userId!=userId || participants.findByMatch_IdAndUserId(r.matchId,userId)
+                .filter(p->canonical.equals(p.getRequestId())).isEmpty())
+            throw new ParticipationProblem(404,"PARTICIPATION_REQUEST_NOT_FOUND","조회 가능한 요청을 찾을 수 없습니다.");
         return new Status(r.requestId,r.matchId,"PROMOTE".equals(r.requestType)?"PROMOTION":r.requestType,
                 r.status,r.refundStatus,r.failureCode,r.failureMessage);
     }

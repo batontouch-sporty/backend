@@ -174,7 +174,10 @@ class DepositSagaTest {
         charged(first);
         assertThat(saga.status(current.getRequestId(),2).status()).isEqualTo("PENDING");
         charged(current.getRequestId());
-        assertThat(saga.status(first,2).status()).isEqualTo("CANCELLED");
+        assertThatThrownBy(()->saga.status(first,2)).isInstanceOfSatisfying(ParticipationProblem.class,e->{
+            assertThat(e.status()).isEqualTo(404); assertThat(e.code()).isEqualTo("PARTICIPATION_REQUEST_NOT_FOUND");
+        });
+        assertThat(tx.execute(s->store.get(first)).status).isEqualTo("CANCELLED");
         assertThat(participants.countByMatch_Id(m)).isEqualTo(2);
     }
     @Test void matchCancellationRefundsEveryOriginalRequestIncludingPending() {
@@ -253,6 +256,26 @@ class DepositSagaTest {
         charged(id(m,2)); jdbc.update("UPDATE matches SET start_at=? WHERE id=?",start.minusDays(3),m);
         mvc.perform(delete("/api/matches/"+m+"/participants/me").header("X-User-Id","2"))
             .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("MATCH_ALREADY_STARTED"));
+    }
+    @Test void requestStatusUsesContractErrorsAndRetiredRequestsStillCompleteRefundsInternally() throws Exception {
+        mvc.perform(get("/api/matches/requests/not-a-uuid").header("X-User-Id","1"))
+            .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+        mvc.perform(get("/api/matches/requests/1-1-1-1-1").header("X-User-Id","1"))
+            .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+        mvc.perform(get("/api/matches/requests/"+UUID.randomUUID()).header("X-User-Id","1"))
+            .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("PARTICIPATION_REQUEST_NOT_FOUND"));
+        long m=ready(3); participation.join(m,2L); String old=id(m,2);
+        participation.leave(m,2L); participation.join(m,2L); String current=id(m,2);
+        mvc.perform(get("/api/matches/requests/"+old).header("X-User-Id","2"))
+            .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("PARTICIPATION_REQUEST_NOT_FOUND"));
+        mvc.perform(get("/api/matches/requests/"+current).header("X-User-Id","3"))
+            .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("PARTICIPATION_REQUEST_NOT_FOUND"));
+        charged(old);
+        result("user.deposit-refund-completed.v1",old,Map.of("outcome","RETURNED","creditedPoints",10));
+        assertThat(tx.execute(s->store.get(old)).refundStatus).isEqualTo("COMPLETED");
+        mvc.perform(get("/api/matches/requests/"+current).header("X-User-Id","2"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.requestId").value(current))
+            .andExpect(jsonPath("$.status").value("PENDING"));
     }
     void withdraw(long user) {
         var store=new com.example.sporty.match.withdrawal.WithdrawalStore(jdbc,mapper); store.setDeposits(saga);

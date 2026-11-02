@@ -4,6 +4,7 @@ import com.example.sporty.notification.events.KafkaTopics;
 import com.example.sporty.notification.events.domain.entity.ProcessedEventEntity;
 import com.example.sporty.notification.events.dto.MatchJoinedEvent;
 import com.example.sporty.notification.events.dto.MatchStatusChangedEvent;
+import com.example.sporty.notification.events.dto.StartingSoonEvent;
 import com.example.sporty.notification.events.dto.WaitlistPromotedEvent;
 import com.example.sporty.notification.events.dto.WithdrawalRejectedEvent;
 import com.example.sporty.notification.events.repository.ProcessedEventRepository;
@@ -15,6 +16,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -31,9 +39,19 @@ public class NotificationEventService {
     private static final int BODY_MAX = 500;
     private static final String WITHDRAWAL_TITLE = "회원 탈퇴";
     private static final Pattern CODE_LIKE = Pattern.compile("[A-Z0-9_]+");
+    // 취소된 모임 표시. CANCELLED 이벤트를 처리할 때 processed_events에 "match-cancelled:<matchId>" 한 줄을 남기고,
+    // 시작 전 알림은 이 표시가 있으면 모임 단위로 건너뛴다. 이벤트 ID(UUID)와 겹치지 않도록 접두어를 붙인다.
+    // 취소 알림을 받은 회원 기준이 아니라 모임 기준이라, 취소 전에 참가를 취소한 회원에게도 리마인더가 가지 않는다.
+    private static final String CANCELLED_MARKER_PREFIX = "match-cancelled:";
+    private static final String CANCELLED_MARKER_TYPE = "match.cancelled";
+    // 모임 시각은 서울 기준으로 보여 준다(매칭 서비스 start_at도 서울 기준).
+    private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
+    private static final DateTimeFormatter HOUR_MINUTE = DateTimeFormatter.ofPattern("HH:mm");
+    private static final DateTimeFormatter MONTH_DAY = DateTimeFormatter.ofPattern("M월 d일");
 
     private final NotificationRepository notificationRepository;
     private final ProcessedEventRepository processedEventRepository;
+    private final Clock clock;
 
     // match.joined.v1 → 참가한 회원과 방장에게 알림
     @Transactional
@@ -86,6 +104,9 @@ public class NotificationEventService {
             }
         }
 
+        if ("CANCELLED".equals(to)) {
+            markCancelled(event.matchId());
+        }
         saveAll(event.eventId(), KafkaTopics.MATCH_STATUS_CHANGED, notifications);
     }
 
@@ -125,6 +146,87 @@ public class NotificationEventService {
         }
 
         saveAll(event.eventId(), KafkaTopics.MATCH_WAITLIST_PROMOTED, notifications);
+    }
+
+    // match.starting-soon.v1 → 확정 참가자 전원(방장 포함)에게 시작 전 알림.
+    // 같은 모임 알림은 회원당 한 번만, 이미 취소 이벤트를 받은 모임은 통째로 건너뛴다.
+    @Transactional
+    public void handleStartingSoon(StartingSoonEvent event) {
+        requireEventId(event.eventId());
+        if (alreadyProcessed(event.eventId())) {
+            return;
+        }
+
+        // 모임·시각을 알 수 없거나 이미 시작한 모임이면 다시 받아도 같으므로 재시도하지 않고 기록만 남긴다.
+        List<NotificationEntity> notifications = new ArrayList<>();
+        ZonedDateTime startAt = parseStartAt(event.startAt());
+        ZonedDateTime now = ZonedDateTime.now(clock).withZoneSameInstant(SEOUL);
+        if (!isPositive(event.matchId()) || startAt == null) {
+            log.warn("matchId·startAt이 올바르지 않은 시작 전 알림 이벤트라 알림을 보내지 않음: eventId={}, matchId={}, startAt={}",
+                    event.eventId(), event.matchId(), event.startAt());
+        } else if (!startAt.isAfter(now)) {
+            log.info("이미 시작한 모임이라 시작 전 알림을 보내지 않음: eventId={}, matchId={}, startAt={}",
+                    event.eventId(), event.matchId(), event.startAt());
+        } else if (isCancelled(event.matchId())) {
+            // 매칭 서비스는 이벤트를 저장한 뒤 모임이 취소돼도 이벤트를 거둬들이지 않는다.
+            log.info("취소된 모임이라 시작 전 알림을 보내지 않음: eventId={}, matchId={}", event.eventId(), event.matchId());
+        } else {
+            String body = quote(event.title()) + "모임이 " + dayLabel(startAt.toLocalDate(), now.toLocalDate())
+                    + " " + startAt.format(HOUR_MINUTE) + "에 시작해요";
+            List<Long> recipients = event.participantIds() == null ? List.of() : event.participantIds();
+            for (Long recipient : new LinkedHashSet<>(recipients)) {
+                if (recipient != null && shouldRemind(recipient, event.matchId())) {
+                    notifications.add(build(event.eventId(), recipient, NotificationType.STARTING_SOON,
+                            event.title(), body, event.matchId()));
+                }
+            }
+        }
+
+        saveAll(event.eventId(), KafkaTopics.MATCH_STARTING_SOON, notifications);
+    }
+
+    // 이미 같은 모임 시작 전 알림을 받았으면 다시 보내지 않는다.
+    private boolean shouldRemind(Long recipient, Long matchId) {
+        return !notificationRepository.existsByRecipientUserIdAndTargetMatchIdAndType(
+                recipient, matchId, NotificationType.STARTING_SOON);
+    }
+
+    // 취소 이벤트를 받은 모임을 표시한다. 같은 모임 취소가 여러 번 와도 한 줄만 남긴다.
+    private void markCancelled(Long matchId) {
+        if (!isPositive(matchId)) {
+            return;
+        }
+        String marker = CANCELLED_MARKER_PREFIX + matchId;
+        if (!processedEventRepository.existsById(marker)) {
+            processedEventRepository.save(new ProcessedEventEntity(marker, CANCELLED_MARKER_TYPE));
+        }
+    }
+
+    private boolean isCancelled(Long matchId) {
+        return processedEventRepository.existsById(CANCELLED_MARKER_PREFIX + matchId);
+    }
+
+    // 오프셋이 있는 시각만 받는다(계약). 서울 시각으로 바꿔 날짜·시간을 보여 준다.
+    private static ZonedDateTime parseStartAt(String startAt) {
+        if (startAt == null || startAt.isBlank()) {
+            return null;
+        }
+        try {
+            return OffsetDateTime.parse(startAt.strip()).atZoneSameInstant(SEOUL);
+        } catch (DateTimeParseException e) {
+            return null;
+        }
+    }
+
+    // 24시간 이내 모임은 보통 오늘·내일이다. 늦게 도착하는 등 그 밖이면 날짜를 그대로 쓴다.
+    private static String dayLabel(LocalDate day, LocalDate today) {
+        if (day.equals(today)) {
+            return "오늘";
+        }
+        if (day.equals(today.plusDays(1))) {
+            return "내일";
+        }
+        return day.format(MONTH_DAY);
     }
 
     private static boolean isPositive(Long id) {

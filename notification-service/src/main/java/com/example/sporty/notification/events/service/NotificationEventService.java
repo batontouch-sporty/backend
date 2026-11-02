@@ -12,6 +12,7 @@ import com.example.sporty.notification.events.repository.ProcessedEventRepositor
 import com.example.sporty.notification.notifications.domain.entity.NotificationEntity;
 import com.example.sporty.notification.notifications.domain.entity.NotificationType;
 import com.example.sporty.notification.notifications.repository.NotificationRepository;
+import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -54,6 +55,7 @@ public class NotificationEventService {
 
     private final NotificationRepository notificationRepository;
     private final ProcessedEventRepository processedEventRepository;
+    private final EntityManager entityManager;
     private final Clock clock;
     private final KafkaProcessingMetrics kafkaProcessingMetrics;
 
@@ -277,7 +279,8 @@ public class NotificationEventService {
     // 알림과 처리 기록을 한 트랜잭션에 저장한다. 알림 대상이 없어도 처리 기록은 남긴다.
     private void saveAll(String eventId, String topic, List<NotificationEntity> notifications) {
         notificationRepository.saveAll(notifications);
-        processedEventRepository.save(new ProcessedEventEntity(eventId, topic));
+        // 할당 ID의 save는 merge할 수 있으므로 삽입과 PK 충돌로 동시 중복을 구분한다.
+        entityManager.persist(new ProcessedEventEntity(eventId, topic));
         if (!TransactionSynchronizationManager.isActualTransactionActive()
                 || !TransactionSynchronizationManager.isSynchronizationActive()) {
             log.warn("Kafka 처리 성공 계측을 생략함: 활성 트랜잭션 없음, topic={}", topic);

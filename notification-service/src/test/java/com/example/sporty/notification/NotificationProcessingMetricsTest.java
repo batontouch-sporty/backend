@@ -81,22 +81,23 @@ class NotificationProcessingMetricsTest {
     void concurrentDuplicateCountsOnlyCommittedEvent() throws Exception {
         String eventId = UUID.randomUUID().toString();
         double before = count(KafkaTopics.MATCH_JOINED);
-        CountDownLatch start = new CountDownLatch(1);
-        ExecutorService executor = Executors.newFixedThreadPool(2);
-        try {
-            List<Future<Boolean>> attempts = List.of(
-                    executor.submit(() -> processDuplicate(eventId, start)),
-                    executor.submit(() -> processDuplicate(eventId, start)));
-            start.countDown();
-            assertThat(attempts.get(0).get(20, TimeUnit.SECONDS)
-                    || attempts.get(1).get(20, TimeUnit.SECONDS)).isTrue();
-            for (Future<Boolean> attempt : attempts) attempt.get(20, TimeUnit.SECONDS);
-        } finally {
-            executor.shutdownNow();
-        }
+        long beforeRows = processedEvents.count();
+        runConcurrentDuplicate(new MatchJoinedEvent(eventId, 57L, "모임", null, null, 0, 10));
 
         assertThat(processedEvents.existsById(eventId)).isTrue();
+        assertThat(processedEvents.count()).isEqualTo(beforeRows + 1);
+        assertThat(notifications.findAll()).noneMatch(n -> eventId.equals(n.getEventId()));
         assertThat(count(KafkaTopics.MATCH_JOINED)).isEqualTo(before + 1);
+    }
+
+    @Test
+    void concurrentDuplicateWithRecipientSavesOneNotification() throws Exception {
+        String eventId = UUID.randomUUID().toString();
+        runConcurrentDuplicate(joined(eventId));
+
+        assertThat(processedEvents.existsById(eventId)).isTrue();
+        assertThat(notifications.findTop50ByRecipientUserIdOrderByCreatedAtDescIdDesc(101L))
+                .filteredOn(n -> eventId.equals(n.getEventId())).hasSize(1);
     }
 
     @Test
@@ -189,10 +190,26 @@ class NotificationProcessingMetricsTest {
         return new MatchJoinedEvent(eventId, 57L, "모임", 101L, null, 1, 10);
     }
 
-    private boolean processDuplicate(String eventId, CountDownLatch start) throws InterruptedException {
+    private void runConcurrentDuplicate(MatchJoinedEvent event) throws Exception {
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            List<Future<Boolean>> attempts = List.of(
+                    executor.submit(() -> processDuplicate(event, start)),
+                    executor.submit(() -> processDuplicate(event, start)));
+            start.countDown();
+            assertThat(attempts.get(0).get(20, TimeUnit.SECONDS)
+                    || attempts.get(1).get(20, TimeUnit.SECONDS)).isTrue();
+            for (Future<Boolean> attempt : attempts) attempt.get(20, TimeUnit.SECONDS);
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    private boolean processDuplicate(MatchJoinedEvent event, CountDownLatch start) throws InterruptedException {
         start.await();
         try {
-            service.handleMatchJoined(new MatchJoinedEvent(eventId, 57L, "모임", null, null, 0, 10));
+            service.handleMatchJoined(event);
             return true;
         } catch (RuntimeException duplicateKey) {
             return false;

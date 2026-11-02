@@ -4,6 +4,7 @@ import com.example.sporty.notification.events.KafkaTopics;
 import com.example.sporty.notification.events.domain.entity.ProcessedEventEntity;
 import com.example.sporty.notification.events.dto.MatchJoinedEvent;
 import com.example.sporty.notification.events.dto.MatchStatusChangedEvent;
+import com.example.sporty.notification.events.dto.StartingSoonEvent;
 import com.example.sporty.notification.events.dto.WaitlistPromotedEvent;
 import com.example.sporty.notification.events.dto.WithdrawalRejectedEvent;
 import com.example.sporty.notification.events.repository.ProcessedEventRepository;
@@ -15,6 +16,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -31,9 +39,16 @@ public class NotificationEventService {
     private static final int BODY_MAX = 500;
     private static final String WITHDRAWAL_TITLE = "회원 탈퇴";
     private static final Pattern CODE_LIKE = Pattern.compile("[A-Z0-9_]+");
+    // 취소 알림 본문에 들어가는 문구. 시작 전 알림을 건너뛸 때 이 문구로 취소 알림을 찾으므로 바꿀 때 함께 확인한다.
+    private static final String CANCELLED_PHRASE = "모임이 취소됐어요";
+    // 모임 시각은 서울 기준으로 보여 준다(매칭 서비스 start_at도 서울 기준).
+    private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
+    private static final DateTimeFormatter HOUR_MINUTE = DateTimeFormatter.ofPattern("HH:mm");
+    private static final DateTimeFormatter MONTH_DAY = DateTimeFormatter.ofPattern("M월 d일");
 
     private final NotificationRepository notificationRepository;
     private final ProcessedEventRepository processedEventRepository;
+    private final Clock clock;
 
     // match.joined.v1 → 참가한 회원과 방장에게 알림
     @Transactional
@@ -74,7 +89,7 @@ public class NotificationEventService {
         };
         String message = switch (to) {
             case "CLOSED" -> quote(event.title()) + "모임 모집이 마감됐어요";
-            case "CANCELLED" -> quote(event.title()) + "모임이 취소됐어요" + reasonSuffix(event.reason());
+            case "CANCELLED" -> quote(event.title()) + CANCELLED_PHRASE + reasonSuffix(event.reason());
             default -> null;
         };
 
@@ -125,6 +140,78 @@ public class NotificationEventService {
         }
 
         saveAll(event.eventId(), KafkaTopics.MATCH_WAITLIST_PROMOTED, notifications);
+    }
+
+    // match.starting-soon.v1 → 확정 참가자 전원(방장 포함)에게 시작 전 알림.
+    // 같은 모임 알림은 회원당 한 번만, 취소 알림을 이미 받은 모임은 건너뛴다.
+    @Transactional
+    public void handleStartingSoon(StartingSoonEvent event) {
+        requireEventId(event.eventId());
+        if (alreadyProcessed(event.eventId())) {
+            return;
+        }
+
+        // 모임·시각을 알 수 없거나 이미 시작한 모임이면 다시 받아도 같으므로 재시도하지 않고 기록만 남긴다.
+        List<NotificationEntity> notifications = new ArrayList<>();
+        ZonedDateTime startAt = parseStartAt(event.startAt());
+        ZonedDateTime now = ZonedDateTime.now(clock).withZoneSameInstant(SEOUL);
+        if (!isPositive(event.matchId()) || startAt == null) {
+            log.warn("matchId·startAt이 올바르지 않은 시작 전 알림 이벤트라 알림을 보내지 않음: eventId={}, matchId={}, startAt={}",
+                    event.eventId(), event.matchId(), event.startAt());
+        } else if (!startAt.isAfter(now)) {
+            log.info("이미 시작한 모임이라 시작 전 알림을 보내지 않음: eventId={}, matchId={}, startAt={}",
+                    event.eventId(), event.matchId(), event.startAt());
+        } else {
+            String body = quote(event.title()) + "모임이 " + dayLabel(startAt.toLocalDate(), now.toLocalDate())
+                    + " " + startAt.format(HOUR_MINUTE) + "에 시작해요";
+            List<Long> recipients = event.participantIds() == null ? List.of() : event.participantIds();
+            for (Long recipient : new LinkedHashSet<>(recipients)) {
+                if (recipient != null && shouldRemind(recipient, event.matchId())) {
+                    notifications.add(build(event.eventId(), recipient, NotificationType.STARTING_SOON,
+                            event.title(), body, event.matchId()));
+                }
+            }
+        }
+
+        saveAll(event.eventId(), KafkaTopics.MATCH_STARTING_SOON, notifications);
+    }
+
+    // 이미 같은 모임 시작 전 알림을 받았거나, 그 모임 취소 알림을 받았으면 보내지 않는다.
+    // 매칭 서비스는 이벤트를 저장한 뒤 모임이 취소돼도 이벤트를 거둬들이지 않는다.
+    private boolean shouldRemind(Long recipient, Long matchId) {
+        if (notificationRepository.existsByRecipientUserIdAndTargetMatchIdAndType(
+                recipient, matchId, NotificationType.STARTING_SOON)) {
+            return false;
+        }
+        if (notificationRepository.existsByRecipientUserIdAndTargetMatchIdAndTypeAndBodyContaining(
+                recipient, matchId, NotificationType.STATUS_CHANGED, CANCELLED_PHRASE)) {
+            log.info("취소된 모임이라 시작 전 알림을 보내지 않음: userId={}, matchId={}", recipient, matchId);
+            return false;
+        }
+        return true;
+    }
+
+    // 오프셋이 있는 시각만 받는다(계약). 서울 시각으로 바꿔 날짜·시간을 보여 준다.
+    private static ZonedDateTime parseStartAt(String startAt) {
+        if (startAt == null || startAt.isBlank()) {
+            return null;
+        }
+        try {
+            return OffsetDateTime.parse(startAt.strip()).atZoneSameInstant(SEOUL);
+        } catch (DateTimeParseException e) {
+            return null;
+        }
+    }
+
+    // 24시간 이내 모임은 보통 오늘·내일이다. 늦게 도착하는 등 그 밖이면 날짜를 그대로 쓴다.
+    private static String dayLabel(LocalDate day, LocalDate today) {
+        if (day.equals(today)) {
+            return "오늘";
+        }
+        if (day.equals(today.plusDays(1))) {
+            return "내일";
+        }
+        return day.format(MONTH_DAY);
     }
 
     private static boolean isPositive(Long id) {

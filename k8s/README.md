@@ -7,6 +7,7 @@
 | 파일 | 역할 |
 | --- | --- |
 | `namespace.yaml` | 모든 Sporty_v2 리소스가 사용할 `sporty` Namespace를 선언한다. |
+| `app-common-configmap.yaml` | Spring 애플리케이션이 공유할 OS·JVM 시간대(`Asia/Seoul`) 설정을 관리한다. |
 | `discovery-configmap.yaml` | Discovery의 일반 환경 설정인 `prod` 프로필과 Spring Boot health probe 활성화를 관리한다. |
 | `discovery-deployment.yaml` | Discovery Pod 1개, 이미지, 포트, probe, 자원 요청·제한을 선언한다. |
 | `discovery-service.yaml` | 클러스터 내부에서 Discovery를 노출하는 `ClusterIP` Service를 선언한다. |
@@ -23,6 +24,22 @@
 팀 프로필 규칙은 `local=IDE`, `dev=Compose`, `prod=Kubernetes`이다. 따라서 Deployment는 ConfigMap에서 `SPRING_PROFILES_ACTIVE=prod`를 주입한다. `config-repo`의 `application-prod.yml`도 클러스터 내부 Eureka 기본 주소를 `http://discovery-service:8761/eureka`로 정의하고 있어 이 Service 이름과 일치한다.
 
 Discovery는 현재 애플리케이션 설정에서 포트 `8761`을 사용하고, Eureka 서버 자신을 등록하거나 레지스트리를 가져오지 않도록 구성되어 있다. Discovery 단독 기동에 필요하지 않은 DB·Redis·Kafka·JWT 설정은 ConfigMap에 포함하지 않았다.
+
+### 공통 시간대
+
+`app-common-config`는 모든 Spring 애플리케이션이 같은 한국 시간 기준을 사용하도록 `TZ=Asia/Seoul`과 `JAVA_TOOL_OPTIONS=-Duser.timezone=Asia/Seoul`을 제공한다. 현재 존재하는 Spring Deployment인 Discovery가 이 ConfigMap을 `envFrom`으로 참조한다.
+
+향후 User·Notification을 포함한 Spring 애플리케이션 Deployment를 추가할 때도 서비스 전용 ConfigMap보다 먼저 다음 공통 설정을 연결한다. 서비스별로 `JAVA_TOOL_OPTIONS`가 더 필요하면 `app-common-config` 값을 단순히 덮어쓰지 말고 `-Duser.timezone=Asia/Seoul`을 포함한 최종 옵션 문자열로 합쳐야 한다.
+
+```yaml
+envFrom:
+  - configMapRef:
+      name: app-common-config
+  - configMapRef:
+      name: <service-specific-config>
+```
+
+User·Notification Deployment는 아직 이 디렉터리에 없으므로 이번 단계에서는 실제 연결하지 않는다. 두 Deployment가 추가되면 `k8s/app-common-configmap.yaml`의 `app-common-config`를 참조해야 한다.
 
 ## 배포 구성
 

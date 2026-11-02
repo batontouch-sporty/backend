@@ -5,6 +5,7 @@ namespace: sporty
 
 resources:
   - namespace.yaml
+  - app-common-configmap.yaml
   - discovery-configmap.yaml
   - discovery-deployment.yaml
   - discovery-service.yaml

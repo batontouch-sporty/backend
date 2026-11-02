@@ -17,7 +17,7 @@
 
 생성 시 시설 검사에는 PR #47의 MatchFacilityIntegration을, 상세에는 MatchRemoteChecks.profiles를 사용한다. 생성·수정 실패는 해당 저장 트랜잭션을 롤백한다. 수정은 시설 검사를 잠금 전에 끝내고, 매치 행 잠금 후 권한·상태·기간·정원·시설 ID를 재확인한다. 상세 응답의 회원 프로필 조회는 저장 트랜잭션을 커밋한 뒤 수행한다.
 
-DB 엔티티·DDL·권한·Compose·다른 서비스는 수정하지 않았다. 검색을 위해 MatchRepository에 JpaSpecificationExecutor를 추가하고, 입력 검증용 validation 의존성을 추가했다.
+최소 정원 2명 정책을 DTO·서비스·MatchEntity 검증에 반영했다. Compose 초기화 DDL과 기존 DB 변경 SQL은 신규 컬럼·테이블 요구사항과 함께 별도 DDL 작업으로 반영한다. 검색을 위해 MatchRepository에 JpaSpecificationExecutor를 추가하고, 입력 검증용 validation 의존성을 추가했다.
 
 ## 연결 및 후속 작업
 
@@ -25,7 +25,7 @@ DB 엔티티·DDL·권한·Compose·다른 서비스는 수정하지 않았다. 
 2. A17 방장 soft cancel, A29 관리자 통계, 시작·종료 스케줄러는 이번 CRUD 범위 밖이며 후속 연결이 필요하다.
 3. 시작 하루 전 알림 `match.starting-soon.v1`의 발행 및 모임당 한 번 처리도 별도 작업이다.
 4. 정원 증가 시 현재 확정 명세대로 RECRUITING으로 재계산한다. 기존 대기자를 정원 수정 순간에 자동 승급시키는 추가 정책은 구현하지 않았다. 현재 #35는 참가 취소·회원 탈퇴 시 승급한다.
-5. 생성 시 OWNER 자동 등록에는 joined 이벤트를 별도로 만들지 않는다. API와 CRUD 서비스의 생성·수정 최소 정원은 2명으로 바꿨다. 기존 정원 1명 기록을 읽을 수 있도록 도메인과 DB 제약은 1명 허용을 유지한다. A9 API 명세의 기존 "정원 1 이상"도 팀 계약에서 2명으로 갱신해야 한다. A10의 `maxParticipant`는 검색 상한 조건이므로 최소값 1을 유지한다.
+5. 생성 시 OWNER 자동 등록에는 joined 이벤트를 별도로 만들지 않는다. 생성·수정 및 도메인의 최소 정원은 2명이다. DB CHECK 최소 2명 변경은 별도 DDL 작업에 남아 있다. 기존 DB는 정원 1명인 매치가 있는지 먼저 확인하고 변경 SQL을 적용해야 한다. A9·A12 API 명세에도 최소 정원 2명을 명시해야 한다. A10의 `maxParticipant`는 검색 상한 조건이므로 최소값 1을 유지한다.
 6. H2·MockMvc 테스트와 별도로 격리된 Compose에서 MariaDB·Gateway·시설·회원 서비스 통합 호출을 검증했다. 다중 매치·여러 경합 타이밍까지 증명한 것은 아니므로 #32 완료로 판정하지 않는다.
 
 ## 테스트

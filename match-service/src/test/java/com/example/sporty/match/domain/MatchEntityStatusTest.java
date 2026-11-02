@@ -117,4 +117,14 @@ class MatchEntityStatusTest {
                         SkillLevel.BEGINNER, SportType.BASKETBALL, GenderGroup.MIXED),
                 new MatchEntity.FacilitySnapshot(12, "체육관", "잠실", "SONGPA", true, null));
     }
+
+    @Test
+    void matchCannotBeCreatedWithCapacityOne() {
+        assertThatThrownBy(() -> new MatchEntity(
+                new MatchEntity.Details("농구", null, FIRST.plusDays(1),
+                        FIRST.plusDays(1).plusHours(2), 1,
+                        SkillLevel.BEGINNER, SportType.BASKETBALL, GenderGroup.MIXED),
+                new MatchEntity.FacilitySnapshot(12, "체육관", "잠실", "SONGPA", true, null)))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
 }

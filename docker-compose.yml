@@ -159,6 +159,17 @@ services:
       timeout: 10s
       retries: 20
 
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:v1.10.0
+    command:
+      - --kafka.server=kafka:29092
+      - --kafka.version=3.9.1
+    expose:
+      - "9308"
+    depends_on:
+      kafka:
+        condition: service_healthy
+
   zipkin:
     image: openzipkin/zipkin:3.6.1
     environment:

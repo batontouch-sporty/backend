@@ -376,7 +376,7 @@
         "spec": {
           "id": 5,
           "title": "AI 직접 성공률",
-          "description": "success / (success + fallback + error). 대체 응답 fallback은 직접 성공에서 제외합니다. type별 요청이 없는 구간은 비율을 계산할 수 없습니다.",
+          "description": "업무 거절(rejected)을 제외한 직접 성공률: success / (success + fallback + error). rejected만 발생하거나 계산 대상 요청이 없는 구간은 비율을 표시하지 않습니다.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -495,7 +495,7 @@
         "spec": {
           "id": 6,
           "title": "AI 평균 응답시간",
-          "description": "계획서 ai.request Timer 기준의 평균 시간입니다. LLM 단독 시간인지 서비스 전체 처리 시간인지 타이머 측정 범위를 합의해야 합니다.",
+          "description": "ai.request Agent Timer의 type·outcome별 평균 응답시간(초)입니다. success·fallback·rejected·error를 각각 표시하며 요청이 없으면 값을 표시하지 않습니다.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -513,7 +513,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "sum by (type, outcome) (rate(ai_request_seconds_sum{application=\"ai-service\",type=~\"search|draft|recommend\",outcome=~\"success|fallback|error\"}[$__rate_interval])) / sum by (type, outcome) (rate(ai_request_seconds_count{application=\"ai-service\",type=~\"search|draft|recommend\",outcome=~\"success|fallback|error\"}[$__rate_interval]))",
+                        "expr": "sum by (type, outcome) (rate(ai_request_seconds_sum{application=\"ai-service\",type=~\"search|draft|recommend\",outcome=~\"success|fallback|rejected|error\"}[$__rate_interval])) / sum by (type, outcome) (rate(ai_request_seconds_count{application=\"ai-service\",type=~\"search|draft|recommend\",outcome=~\"success|fallback|rejected|error\"}[$__rate_interval]))",
                         "format": "time_series",
                         "instant": false,
                         "legendFormat": "{{type}} / {{outcome}}",
@@ -731,7 +731,7 @@
         "spec": {
           "id": 8,
           "title": "AI 처리 결과별 요청량",
-          "description": "직접 성공·대체 응답·오류의 비율 변화를 함께 관측합니다.",
+          "description": "type·outcome별 초당 요청량입니다. 직접 성공·대체 응답·업무 거절·오류를 별도 시계열로 표시합니다.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -749,7 +749,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "sum by (type, outcome) (rate(ai_request_seconds_count{application=\"ai-service\",type=~\"search|draft|recommend\",outcome=~\"success|fallback|error\"}[$__rate_interval]))",
+                        "expr": "sum by (type, outcome) (rate(ai_request_seconds_count{application=\"ai-service\",type=~\"search|draft|recommend\",outcome=~\"success|fallback|rejected|error\"}[$__rate_interval]))",
                         "format": "time_series",
                         "instant": false,
                         "legendFormat": "{{type}} / {{outcome}}",

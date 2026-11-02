@@ -62,12 +62,16 @@ public class FacilityQueryService {
     }
 
     /**
-     * I4: AI 초안의 시설 후보. 활성 시설만, 최대 5개(명세 결정).
-     * 자치구·종목 중 아는 값만으로 거르고, 둘 다 없거나 알 수 없는 값이면 []를 준다(에러 없음).
+     * I4: AI 초안의 시설 후보. 활성 시설만, id 오름차순 최대 5개(명세 결정).
+     * 자치구·종목 중 받은 값으로 거른다. 둘 다 없거나, 받은 값 중 하나라도 모르는 코드면 []를 준다(에러 없음).
+     * 모르는 코드를 무시하고 나머지로만 조회하면(예: JEJU+BASKETBALL → 서울 전체 농구장) 요청과 무관한 시설이 나온다.
      */
     public List<FacilityCandidateResponseDto> getCandidates(String districtCode, String sportCode) {
         District district = District.fromCode(districtCode);
         SportFacilityType sport = SportFacilityType.fromCode(sportCode);
+        if ((hasText(districtCode) && district == null) || (hasText(sportCode) && sport == null)) {
+            return List.of();
+        }
         boolean hasSport = sport != null && !sport.getFacilityNames().isEmpty();
 
         // 종목을 줬는데 대응하는 시설 종류가 없으면(예: 러닝) 후보가 없다.
@@ -92,6 +96,10 @@ public class FacilityQueryService {
         return services.stream()
                 .map(FacilityCandidateResponseDto::from)
                 .toList();
+    }
+
+    private static boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 
     private void validateTimeRange(ServiceRequestDto request) {

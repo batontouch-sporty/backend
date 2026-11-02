@@ -80,10 +80,17 @@ public class MatchDraftAiAgent {
         return draft;
     }
 
-    // I4로 시설 후보를 받는다. 초안에 지역·종목이 둘 다 없거나 facility 호출이 실패하면 [] (초안은 그대로 응답)
+    // I4로 시설 후보를 받는다. 초안은 항상 그대로 응답하고, 아래 경우에는 조회 없이 []를 준다.
+    // - 지역·종목이 둘 다 없음
+    // - 지역은 있는데 서울 자치구명으로 바꿀 수 없음("송파", "수원시" 등). 그대로 종목만 조회하면
+    //   사용자가 말한 지역과 무관한 서울 전체 시설이 나온다. 종목 단독 조회는 지역이 아예 없을 때만 한다.
     private List<FacilityCandidateDto> facilityCandidates(AiDraftDto draft) {
+        boolean hasRegion = draft.getRegion() != null && !draft.getRegion().isBlank();
         District district = District.fromName(draft.getRegion());
         String sport = draft.getSportType() == null ? null : draft.getSportType().name();
+        if (hasRegion && district == null) {
+            return List.of();
+        }
         if (district == null && sport == null) {
             return List.of();
         }

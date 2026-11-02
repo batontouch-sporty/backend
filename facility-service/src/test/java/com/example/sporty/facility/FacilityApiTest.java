@@ -223,6 +223,13 @@ class FacilityApiTest {
         mvc.perform(get("/internal/facilities").param("district", "JEJU").param("sport", "SQUASH"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(0)));
+        // 하나라도 모르는 코드면 나머지 조건만으로 넓게 조회하지 않는다
+        mvc.perform(get("/internal/facilities").param("district", "JEJU").param("sport", "BASKETBALL"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(0)));
+        mvc.perform(get("/internal/facilities").param("district", "SONGPA").param("sport", "SQUASH"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(0)));
         mvc.perform(get("/internal/facilities"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(0)));

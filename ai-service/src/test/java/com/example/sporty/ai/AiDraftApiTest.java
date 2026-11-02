@@ -127,6 +127,22 @@ class AiDraftApiTest {
     }
 
     @Test
+    void 지역을_자치구로_바꿀_수_없으면_시설_후보를_조회하지_않는다() throws Exception {
+        // "송파"(구 없음), "수원시"(서울 밖)는 District로 바꿀 수 없다. 종목만으로 조회하면 서울 전체가 나온다.
+        for (String region : new String[] {"송파", "수원시"}) {
+            when(draftChat.call(anyString(), anyString()))
+                    .thenReturn("{\"sportType\":\"BASKETBALL\",\"region\":\"" + region + "\",\"maxParticipant\":10}");
+
+            requestDraft(region + " 농구 10명")
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.initialValues.region").value(region))
+                    .andExpect(jsonPath("$.facilityCandidates", hasSize(0)));
+        }
+
+        verifyNoInteractions(facilityClient);
+    }
+
+    @Test
     void 종목만_있으면_자치구_없이_시설_후보를_조회한다() throws Exception {
         when(draftChat.call(anyString(), anyString()))
                 .thenReturn("{\"sportType\":\"FUTSAL\",\"maxParticipant\":10}");

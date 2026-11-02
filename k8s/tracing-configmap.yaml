@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tracing-config
+  namespace: sporty
+  labels:
+    app.kubernetes.io/component: tracing
+    app.kubernetes.io/part-of: sporty
+data:
+  MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: "http://zipkin:9411/api/v2/spans"
+  MANAGEMENT_TRACING_SAMPLING_PROBABILITY: "1.0"
+  MANAGEMENT_OBSERVATIONS_ENABLE_TASKS: "false"

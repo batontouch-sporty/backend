@@ -1,6 +1,6 @@
-# Kubernetes 공통 기반 및 Discovery 초안
+# Kubernetes 공통 기반, Discovery 및 tracing 초안
 
-이 디렉터리는 Sporty_v2의 Kubernetes 공통 구조와 `discovery-service` 배포를 시작하기 위한 초안이다. 현재 대상 클러스터와 이미지 레지스트리가 정해지지 않았으므로 정적 렌더링과 설정 연결 검토까지만 대상으로 한다. 실제 클러스터 적용과 전체 서비스 배포는 후속 작업이다.
+이 디렉터리는 Sporty_v2의 Kubernetes 공통 구조, `discovery-service` 배포와 HTTP 분산 추적 공통 기반을 시작하기 위한 초안이다. 현재 대상 클러스터와 이미지 레지스트리가 정해지지 않았으므로 정적 렌더링과 설정 연결 검토까지만 대상으로 한다. 실제 클러스터 적용과 전체 서비스 배포는 후속 작업이다.
 
 ## 파일 구성
 
@@ -10,10 +10,13 @@
 | `discovery-configmap.yaml` | Discovery의 일반 환경 설정인 `prod` 프로필과 Spring Boot health probe 활성화를 관리한다. |
 | `discovery-deployment.yaml` | Discovery Pod 1개, 이미지, 포트, probe, 자원 요청·제한을 선언한다. |
 | `discovery-service.yaml` | 클러스터 내부에서 Discovery를 노출하는 `ClusterIP` Service를 선언한다. |
+| `tracing-configmap.yaml` | 추적 대상 애플리케이션이 공유할 Zipkin endpoint, sampling 및 scheduled task observation 설정을 관리한다. |
+| `zipkin-deployment.yaml` | 개발·시연용 메모리 저장 방식의 Zipkin 단일 인스턴스를 선언한다. |
+| `zipkin-service.yaml` | 같은 Namespace의 애플리케이션이 Zipkin에 접근할 `ClusterIP` Service를 선언한다. |
 | `kustomization.yaml` | 위 리소스를 함께 렌더링하고 배포 이미지 이름과 태그를 교체할 지점을 제공한다. |
 | `README.md` | 초안의 전제, 검증 범위, 이미지 준비 및 후속 배포 절차를 설명한다. |
 
-이번 초안은 Discovery만 구현한다. Config·Gateway, 데이터 저장소, Kafka, 도메인 서비스와 모니터링 매니페스트는 아래의 다음 단계에서 담당자와 설정을 맞춘 뒤 추가한다.
+애플리케이션 Deployment는 현재 Discovery만 구현되어 있다. 이번 tracing 기반에는 공통 ConfigMap과 Zipkin 리소스만 포함하며, Gateway·User·Match·Facility·AI·Notification Deployment는 아래의 다음 단계에서 담당자와 설정을 맞춘 뒤 추가한다. Config, 데이터 저장소, Kafka, 나머지 도메인 서비스와 모니터링 매니페스트도 후속 범위다.
 
 ## 프로필과 설정
 
@@ -65,6 +68,32 @@ ConfigMap의 `MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED=true`는 Kubernetes용 l
 | limits | `500m` | `512Mi` |
 
 기존 Dockerfile은 JVM 최대 힙을 `-Xmx256m`으로 지정한다. JVM 메타데이터, 스레드 스택, 네이티브 메모리와 기타 프로세스 메모리도 필요하므로 메모리 limit은 최대 힙보다 큰 `512Mi`로 잡았다. 이 값은 초안이며 실제 배포 환경의 사용량을 측정한 뒤 조정해야 한다.
+
+## Kubernetes tracing 구조
+
+Compose의 애플리케이션은 `http://zipkin:9411/api/v2/spans`로 span을 전송한다. Kubernetes에서도 같은 `sporty` Namespace에 있는 `zipkin` ClusterIP Service의 이름을 사용하므로 endpoint는 동일하게 `http://zipkin:9411/api/v2/spans`이다. `zipkin` Service는 9411 포트를 Zipkin Pod의 9411 포트에 연결하며 외부에는 노출하지 않는다.
+
+`tracing-config` ConfigMap은 추적 대상 애플리케이션이 공유할 다음 세 환경변수를 관리한다.
+
+- `MANAGEMENT_ZIPKIN_TRACING_ENDPOINT`: Zipkin span 수집 endpoint
+- `MANAGEMENT_TRACING_SAMPLING_PROBABILITY`: 추적 sampling 비율
+- `MANAGEMENT_OBSERVATIONS_ENABLE_TASKS`: scheduled task observation 활성화 여부
+
+향후 Gateway·User·Match·Facility·AI·Notification Deployment를 추가할 때 각 서비스 전용 ConfigMap과 함께 다음과 같이 주입한다.
+
+```yaml
+envFrom:
+  - configMapRef:
+      name: <service-specific-config>
+  - configMapRef:
+      name: tracing-config
+```
+
+현재 Kubernetes 디렉터리에는 애플리케이션 중 Discovery Deployment만 있으며, Discovery는 이번 tracing 적용 대상이 아니다. 따라서 Discovery ConfigMap과 Deployment에는 `tracing-config`를 연결하지 않았다. 위 여섯 서비스에 대한 실제 `envFrom` 연결은 각 Deployment를 추가할 때 수행해야 한다.
+
+sampling probability `1.0`은 모든 호출을 확인하기 위한 개발·시연 기준이다. 운영 환경에서는 트래픽 양과 저장 비용을 측정한 뒤 더 낮은 값으로 조정할 수 있다. `MANAGEMENT_OBSERVATIONS_ENABLE_TASKS=false`는 Scheduled Task 기능 자체를 끄는 설정이 아니라, Scheduled Task Observation과 그에 따른 span 생성을 줄이기 위한 설정이다.
+
+Zipkin은 개발·시연용 단일 인스턴스이며 `STORAGE_TYPE=mem`을 사용한다. trace 데이터는 메모리에만 보관되므로 Zipkin Pod가 재시작되거나 교체되면 사라진다. 영속 저장소와 고가용성 구성은 운영 환경 요구사항을 확정한 뒤 별도로 설계해야 한다.
 
 ## Kustomize 렌더링
 

@@ -8,6 +8,9 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import java.time.Duration;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.Map;
 import java.util.UUID;
 
@@ -45,6 +48,7 @@ import com.example.sporty.notification.notifications.repository.NotificationRepo
         KafkaTopics.MATCH_STATUS_CHANGED,
         KafkaTopics.MATCH_WITHDRAWAL_REJECTED,
         KafkaTopics.MATCH_WAITLIST_PROMOTED,
+        KafkaTopics.MATCH_STARTING_SOON,
         KafkaTopics.MATCH_STATUS_CHANGED + KafkaTopics.DLT_SUFFIX,
         KafkaTopics.MATCH_WITHDRAWAL_REJECTED + KafkaTopics.DLT_SUFFIX
 })
@@ -119,6 +123,24 @@ class MatchEventConsumerTest {
         assertThat(notifications.findTop50ByRecipientUserIdOrderByCreatedAtDescIdDesc(301L))
                 .singleElement().extracting(n -> n.getBody())
                 .isEqualTo("'평일 농구' 대기가 풀려 참가가 확정됐어요");
+    }
+
+    // match-service(#79)가 보내는 시작 전 알림 형식(startAt 오프셋 포함, 방장 포함 참가자)을 그대로 읽는다
+    @Test
+    void consumesStartingSoonEventFromMatchService() {
+        String eventId = UUID.randomUUID().toString();
+        OffsetDateTime startAt = OffsetDateTime.now(ZoneOffset.ofHours(9)).plusHours(3).withSecond(0).withNano(0);
+
+        kafka.send(KafkaTopics.MATCH_STARTING_SOON, "62", """
+                {"eventId":"%s","matchId":62,"title":"주말 풋살","startAt":"%s","participantIds":[401,402]}
+                """.formatted(eventId, startAt.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)));
+
+        await().atMost(WAIT).until(() -> processedEvents.existsById(eventId));
+        assertThat(notifications.findTop50ByRecipientUserIdOrderByCreatedAtDescIdDesc(401L))
+                .singleElement().extracting(n -> n.getBody()).asString()
+                .startsWith("'주말 풋살' 모임이 ")
+                .endsWith(startAt.format(DateTimeFormatter.ofPattern("HH:mm")) + "에 시작해요");
+        assertThat(notifications.findTop50ByRecipientUserIdOrderByCreatedAtDescIdDesc(402L)).hasSize(1);
     }
 
     // JSON이 깨진 메시지는 재시도 없이 DLT로

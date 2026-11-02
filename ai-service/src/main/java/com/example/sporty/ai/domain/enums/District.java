@@ -51,6 +51,18 @@ public enum District {
                 .toList();
     }
 
+    /** 자치구명(강남구) → 코드(GANGNAM). 모르는 이름이면 null */
+    public static District fromName(String name) {
+        if (name == null || name.isBlank()) {
+            return null;
+        }
+        String trimmed = name.trim();
+        return Arrays.stream(values())
+                .filter(district -> district.name.equals(trimmed))
+                .findFirst()
+                .orElse(null);
+    }
+
     /** "강남구"뿐 아니라 "강남"으로도 찾는다. "중구"는 "중"이 너무 흔해 전체 이름만 본다. */
     public String shortName() {
         String withoutSuffix = name.substring(0, name.length() - 1);

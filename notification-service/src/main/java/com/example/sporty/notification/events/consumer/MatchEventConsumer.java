@@ -3,6 +3,7 @@ package com.example.sporty.notification.events.consumer;
 import com.example.sporty.notification.events.KafkaTopics;
 import com.example.sporty.notification.events.dto.MatchJoinedEvent;
 import com.example.sporty.notification.events.dto.MatchStatusChangedEvent;
+import com.example.sporty.notification.events.dto.StartingSoonEvent;
 import com.example.sporty.notification.events.dto.WaitlistPromotedEvent;
 import com.example.sporty.notification.events.dto.WithdrawalRejectedEvent;
 import com.example.sporty.notification.events.service.NotificationEventService;
@@ -38,6 +39,11 @@ public class MatchEventConsumer {
     @KafkaListener(topics = KafkaTopics.MATCH_WAITLIST_PROMOTED)
     public void onWaitlistPromoted(String payload) throws JsonProcessingException {
         notificationEventService.handleWaitlistPromoted(objectMapper.readValue(payload, WaitlistPromotedEvent.class));
+    }
+
+    @KafkaListener(topics = KafkaTopics.MATCH_STARTING_SOON)
+    public void onStartingSoon(String payload) throws JsonProcessingException {
+        notificationEventService.handleStartingSoon(objectMapper.readValue(payload, StartingSoonEvent.class));
     }
 
 }

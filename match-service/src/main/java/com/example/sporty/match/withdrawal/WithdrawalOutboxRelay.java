@@ -37,7 +37,7 @@ public class WithdrawalOutboxRelay {
                     jdbc.queryForList(
                             "SELECT event_id FROM outbox_event WHERE published_at IS NULL AND"
                                 + " event_type IN"
-                                + " ('match.joined.v1','match.waitlist-promoted.v1','match.status-changed.v1',"
+                                + " ('match.joined.v1','match.waitlist-promoted.v1','match.starting-soon.v1','match.status-changed.v1',"
                                 + " 'match.withdrawal-cleaned.v1','match.withdrawal-rejected.v1')"
                                 + " ORDER BY created_at,event_id LIMIT 50",
                             String.class);

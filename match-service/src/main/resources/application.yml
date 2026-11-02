@@ -49,6 +49,10 @@ management:
           - info
 
 match:
+  starting-soon:
+    enabled: ${MATCH_STARTING_SOON_ENABLED:true}
+    delay-ms: ${MATCH_STARTING_SOON_DELAY_MS:60000}
+    initial-delay-ms: ${MATCH_STARTING_SOON_INITIAL_DELAY_MS:60000}
   withdrawal:
     enabled: ${MATCH_WITHDRAWAL_ENABLED:false}
   clients:

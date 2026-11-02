@@ -24,7 +24,7 @@
 
 - `match.outbox.enabled`: 기본 true. false여도 업무 이벤트 저장은 계속하고 발행만 중지한다.
 - `match.outbox.delay-ms`: 기본 1초. 미설정 시 기존 `match.withdrawal.outbox-delay-ms`를 사용한다.
-- 지원 토픽: joined, status-changed, waitlist-promoted, withdrawal-cleaned, withdrawal-rejected의 v1.
+- 지원 토픽: joined, status-changed, waitlist-promoted, starting-soon, withdrawal-cleaned, withdrawal-rejected의 v1.
 - 미발행 행을 잠그고 Kafka ACK 후에만 published_at을 기록한다.
 - Kafka 발행 실패 시 미발행 상태를 유지하며 동일 eventId·payload로 재시도한다.
 - Kafka 전송 성공 뒤 DB 표시 실패가 가능하므로 전달은 at-least-once다. 알림 서비스의

@@ -2,9 +2,9 @@
 
 `MatchRemoteChecks`는 회원·시설 API 호출과 실패 정책을 제공한다. `MatchFacilityIntegration`은 검증 결과를 공통 `MatchEntity`에 연결한다. 저장과 권한·정원·시작 시각 검사는 호출 서비스가 담당한다.
 
-- 생성: 회원별 DB 잠금을 획득한 같은 업무 트랜잭션에서 `MatchFacilityIntegration.create(userId, details, facilityId)`로 회원·시설을 확인한 엔티티를 받아 저장한다. 탈퇴 Saga와 같은 회원 잠금 이름을 사용한다. 방장 참가 행·정원 상태·이벤트는 생성 서비스에서 함께 처리한다.
+- 생성: 회원별 DB 잠금을 획득한 같은 업무 트랜잭션에서 `MatchFacilityIntegration.create(userId, details, facilityId)`로 회원·시설을 확인한 엔티티를 받아 저장한다. 탈퇴 Saga와 같은 회원 잠금 이름을 사용한다. 방장 참가 행·정원 상태는 생성 서비스에서 함께 처리한다.
 - 수정(A12): `MatchRemoteChecks.checkFacility(...)`로 시설을 잠금 전에 검사한다. 트랜잭션에서 회원 잠금 후 매치 행 잠금을 얻고 방장 권한·시설 ID·수정 가능 상태·기간·현재 인원 대비 정원을 재확인한 뒤 저장한다. 트랜잭션 커밋 후 `MatchRemoteChecks.profiles(...)`로 상세 프로필을 조회한다. 원격 시설·프로필 호출 동안 매치 행 잠금을 보유하지 않는다. 검증 실패 시 기존 엔티티는 변경하지 않는다.
-- 참가: 회원별 DB 잠금 → `MatchRemoteChecks.activeMember(userId)` → 매치 행 잠금 순서다. 조회한 회원의 성별은 `checkParticipantGender(member, genderGroup)`로 매치 잠금 아래에서 비교한다. 참가의 원격 회원 조회는 매치 행 잠금을 잡기 전에 마친다. #11에서 실제 호출부를 연결했으며 참가/Saga와 같은 회원 잠금 이름을 사용한다.
+- 참가: 회원별 DB 잠금 → `MatchRemoteChecks.activeMember(userId)` → 매치 행 잠금 순서다. 조회한 회원의 성별은 `checkParticipantGender(member, genderGroup)`로 매치 잠금 아래에서 비교한다. 참가의 원격 회원 조회는 매치 행 잠금을 잡기 전에 마친다. 이슈 #11의 PR #59에서 실제 호출부를 연결했으며 참가/Saga와 같은 회원 잠금 이름을 사용한다.
 - 상세: `profiles(userIds)` 결과를 참가자 응답에 연결한다. 조회 실패 또는 누락된 회원의 닉네임은 `알 수 없음`이다.
 
 ## 통신과 오류

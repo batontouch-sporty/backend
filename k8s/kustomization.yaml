@@ -8,6 +8,9 @@ resources:
   - discovery-configmap.yaml
   - discovery-deployment.yaml
   - discovery-service.yaml
+  - tracing-configmap.yaml
+  - zipkin-deployment.yaml
+  - zipkin-service.yaml
 
 images:
   - name: sporty-discovery-service

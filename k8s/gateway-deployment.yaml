@@ -53,7 +53,6 @@ spec:
                 configMapKeyRef:
                   name: sporty-infra-endpoints
                   key: CORS_ALLOWED_ORIGIN
-                  optional: true
           startupProbe:
             httpGet:
               path: /actuator/health/liveness

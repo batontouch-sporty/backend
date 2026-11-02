@@ -35,7 +35,7 @@ spec:
             - configMapRef:
                 name: tracing-config
           env:
-            - name: FACILITY_DB_HOST
+            - name: MARIADB_HOST
               valueFrom:
                 configMapKeyRef:
                   name: sporty-infra-endpoints

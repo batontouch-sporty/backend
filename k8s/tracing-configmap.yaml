@@ -6,7 +6,5 @@ metadata:
   labels:
     app.kubernetes.io/component: tracing
     app.kubernetes.io/part-of: sporty
-data:
-  MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: "http://zipkin:9411/api/v2/spans"
-  MANAGEMENT_TRACING_SAMPLING_PROBABILITY: "1.0"
-  MANAGEMENT_OBSERVATIONS_ENABLE_TASKS: "false"
+# 추적 기본값은 config-repo에서 관리한다. 클러스터별 override가 생기면 여기에 추가한다.
+data: {}

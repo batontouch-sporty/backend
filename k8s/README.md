@@ -11,7 +11,7 @@
 | `discovery-configmap.yaml` | Discovery의 일반 환경 설정인 `prod` 프로필과 Spring Boot health probe 활성화를 관리한다. |
 | `discovery-deployment.yaml` | Discovery Pod 1개, 이미지, 포트, probe, 자원 요청·제한을 선언한다. |
 | `discovery-service.yaml` | 클러스터 내부에서 Discovery를 노출하는 `ClusterIP` Service를 선언한다. |
-| `tracing-configmap.yaml` | 추적 대상 애플리케이션이 공유할 Zipkin endpoint, sampling 및 scheduled task observation 설정을 관리한다. |
+| `tracing-configmap.yaml` | 추적 대상 6개 서비스의 클러스터별 예외 설정을 위한 ConfigMap이다. 기본 추적 설정은 config-repo에서 읽는다. |
 | `zipkin-deployment.yaml` | 개발·시연용 메모리 저장 방식의 Zipkin 단일 인스턴스를 선언한다. |
 | `zipkin-service.yaml` | 같은 Namespace의 애플리케이션이 Zipkin에 접근할 `ClusterIP` Service를 선언한다. |
 | `kustomization.yaml` | 위 리소스를 함께 렌더링하고 배포 이미지 이름과 태그를 교체할 지점을 제공한다. |
@@ -24,7 +24,7 @@ Gateway는 API 포트 8000과 내부 관리 포트 8001을 구분한다. Config�
 
 ## 프로필과 설정
 
-팀 프로필 규칙은 `local=IDE`, `dev=Compose`, `prod=Kubernetes`이다. 따라서 Deployment는 ConfigMap에서 `SPRING_PROFILES_ACTIVE=prod`를 주입한다. `config-repo`의 `application-prod.yml`도 클러스터 내부 Eureka 기본 주소를 `http://discovery-service:8761/eureka`로 정의하고 있어 이 Service 이름과 일치한다.
+팀 프로필 규칙은 `local=IDE`, `dev=Compose`, `prod=Kubernetes`이다. 따라서 Deployment는 ConfigMap에서 `SPRING_PROFILES_ACTIVE=prod`를 주입한다. `config-repo`의 서비스별 `<서비스명>-prod.yml`도 클러스터 내부 Eureka 기본 주소를 `http://discovery-service:8761/eureka`로 정의하고 있어 이 Service 이름과 일치한다.
 
 Discovery는 현재 애플리케이션 설정에서 포트 `8761`을 사용하고, Eureka 서버 자신을 등록하거나 레지스트리를 가져오지 않도록 구성되어 있다. Discovery 단독 기동에 필요하지 않은 DB·Redis·Kafka·JWT 설정은 ConfigMap에 포함하지 않았다.
 
@@ -70,13 +70,7 @@ ConfigMap의 `MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED=true`는 Kubernetes용 l
 
 Compose의 애플리케이션은 `http://zipkin:9411/api/v2/spans`로 span을 전송한다. Kubernetes에서도 같은 `sporty` Namespace에 있는 `zipkin` ClusterIP Service의 이름을 사용하므로 endpoint는 동일하게 `http://zipkin:9411/api/v2/spans`이다. `zipkin` Service는 9411 포트를 Zipkin Pod의 9411 포트에 연결하며 외부에는 노출하지 않는다.
 
-`tracing-config` ConfigMap은 추적 대상 애플리케이션이 공유할 다음 세 환경변수를 관리한다.
-
-- `MANAGEMENT_ZIPKIN_TRACING_ENDPOINT`: Zipkin span 수집 endpoint
-- `MANAGEMENT_TRACING_SAMPLING_PROBABILITY`: 추적 sampling 비율
-- `MANAGEMENT_OBSERVATIONS_ENABLE_TASKS`: scheduled task observation 활성화 여부
-
-Gateway·User·Match·Facility·AI·Notification이 `app-common-config`, `app-client-config`, `tracing-config`를 참조한다. Discovery와 Config에는 추적 설정을 주입하지 않는다.
+Gateway·User·Match·Facility·AI·Notification은 `tracing-config`를 참조한다. 이 ConfigMap의 기본값은 비어 있다. Zipkin 주소는 config-repo의 각 `<서비스명>-prod.yml`, sampling 비율과 스케줄 작업 observation은 공통 `application.yml`에서 관리한다. 설정을 변경하면 config-repo PR 머지 후 해당 서비스를 재시작한다.
 
 sampling probability `1.0`은 모든 호출을 확인하기 위한 개발·시연 기준이다. 운영 환경에서는 트래픽 양과 저장 비용을 측정한 뒤 더 낮은 값으로 조정할 수 있다. `MANAGEMENT_OBSERVATIONS_ENABLE_TASKS=false`는 Scheduled Task 기능 자체를 끄는 설정이 아니라, Scheduled Task Observation과 그에 따른 span 생성을 줄이기 위한 설정이다.
 
@@ -121,13 +115,15 @@ Mac에서 만든 로컬 이미지는 별도 VM의 Kubernetes 노드로 자동 �
 
 | 리소스 | 필요한 키 | 용도 |
 | --- | --- | --- |
-| ConfigMap `sporty-infra-endpoints` | `MARIADB_HOST`, `REDIS_HOST`, `KAFKA_BOOTSTRAP_SERVERS`, `PROMETHEUS_URL` | Pod에서 접근 가능한 주소. Kafka는 host:port, Prometheus는 스킴과 포트를 포함한 URL이다. |
-| 같은 ConfigMap의 선택 키 | `MARIADB_HOST_PORT`, `REDIS_HOST_PORT`, `CORS_ALLOWED_ORIGIN` | DB와 Redis의 기본 포트는 3306, 6379다. 프론트를 다른 출처에 배포하면 실제 origin을 지정한다. |
+| ConfigMap `sporty-infra-endpoints` | `MARIADB_HOST`, `REDIS_HOST`, `KAFKA_BOOTSTRAP_SERVERS`, `CORS_ALLOWED_ORIGIN`, `PROMETHEUS_URL` | DB·Redis는 Pod가 접근할 호스트, Kafka는 host:port, Prometheus는 스킴·포트가 있는 URL, CORS는 프론트엔드의 실제 origin이다. |
+| 같은 ConfigMap의 선택 키 | `MARIADB_HOST_PORT`, `REDIS_HOST_PORT` | DB와 Redis의 기본 포트는 3306, 6379다. |
 | Secret `sporty-jwt` | `JWT_SECRET_KEY` | Gateway와 User가 같은 서명 키를 사용한다. |
 | Secret `user-service-secret`, `match-service-secret`, `facility-service-secret`, `notification-service-secret` | 각각 `USER_APP_PASSWORD`, `MATCH_APP_PASSWORD`, `FACILITY_APP_PASSWORD`, `NOTIFICATION_APP_PASSWORD` | 인프라 MariaDB의 서비스별 계정과 일치해야 한다. 기존 DB 초기화 스크립트를 기준으로 스키마와 권한을 준비한다. |
 | 선택 키 | Facility Secret의 `PUBLIC_DATA_API_KEY`, AI Secret `ai-service-secret`의 `OPENAI_API_KEY` | 키가 필요한 외부 기능용이다. 시연용 관리자 계정이 필요하면 User Secret에 `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NICKNAME`을 추가한다. |
 
 로컬 Compose의 호스트 바인딩과 Kafka advertised listener를 인프라 EC2의 사설 네트워크에 맞춘다. Kafka가 알려주는 브로커 주소에도 워커 Pod에서 접근할 수 있어야 한다. `PROMETHEUS_URL`은 Gateway가 관리자 쿼리를 보낼 주소다. 인프라 EC2에서 앱 메트릭을 수집할 경로 및 타깃은 별도로 구성한다.
+
+DB를 쓰는 4개 앱은 `MARIADB_HOST`, Kafka를 쓰는 User·Match·Notification은 `KAFKA_BOOTSTRAP_SERVERS`를 Pod에 주입한다. prod 설정이 이 이름을 그대로 참조한다. Match의 탈퇴 리스너는 Deployment에 명시한 `MATCH_WITHDRAWAL_ENABLED="true"`로 활성화한다.
 
 ## 실제 배포 전 확인 사항
 
@@ -172,6 +168,8 @@ curl -fsS http://127.0.0.1:8761/actuator/health/readiness
 Eureka 화면은 브라우저에서 `http://127.0.0.1:8761/`로 확인한다. 렌더링 성공은 실제 이미지 pull, 애플리케이션 기동, probe 성공 또는 Pod Ready를 보장하지 않는다.
 
 ## 신규 앱 배포 확인
+
+Config import가 필수인 이미지(backend #113 반영본)를 사용한다. 앱을 기동하거나 재시작하기 전에 Config Server가 Git 설정을 제공할 수 있는지 확인한다. 맥북에서 IDE로 실행할 때는 Compose의 Config 포트(기본 `127.0.0.1:8888`), Pod 안에서는 `http://config-service:8888`에 접속한다.
 
 1. `kubectl -n sporty get deploy,pods,svc`로 신규 앱 7개의 rollout과 Ready 상태를 확인한다.
 2. `kubectl -n sporty port-forward svc/config-service 18888:8888`을 실행하고 다른 터미널에서 `curl -fsS http://127.0.0.1:18888/gateway-service/prod/main`을 호출한다. 응답의 프로필, Git 버전 및 propertySources에 prod 설정이 있는지 확인한다.

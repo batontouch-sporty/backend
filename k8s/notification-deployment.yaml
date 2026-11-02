@@ -35,7 +35,7 @@ spec:
             - configMapRef:
                 name: tracing-config
           env:
-            - name: NOTIFICATION_DB_HOST
+            - name: MARIADB_HOST
               valueFrom:
                 configMapKeyRef:
                   name: sporty-infra-endpoints
@@ -51,7 +51,7 @@ spec:
                 secretKeyRef:
                   name: notification-service-secret
                   key: NOTIFICATION_APP_PASSWORD
-            - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
+            - name: KAFKA_BOOTSTRAP_SERVERS
               valueFrom:
                 configMapKeyRef:
                   name: sporty-infra-endpoints

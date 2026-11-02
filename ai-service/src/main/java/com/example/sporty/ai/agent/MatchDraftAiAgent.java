@@ -50,12 +50,9 @@ public class MatchDraftAiAgent {
                     .build();
             metrics.record(AiMetrics.TYPE_DRAFT, AiMetrics.OUTCOME_SUCCESS, start);
             return response;
-        } catch (AiException e) {
-            // 503(LLM 실패)만 error로 센다. 400은 LLM은 응답했지만 입력 정보가 부족한 경우다.
-            String outcome = e.getStatus().is5xxServerError()
-                    ? AiMetrics.OUTCOME_ERROR
-                    : AiMetrics.OUTCOME_SUCCESS;
-            metrics.record(AiMetrics.TYPE_DRAFT, outcome, start);
+        } catch (RuntimeException e) {
+            // 4xx 업무 거절은 rejected, 5xx와 예상 못 한 예외는 error. 성공률에 섞지 않는다.
+            metrics.record(AiMetrics.TYPE_DRAFT, AiMetrics.outcomeOf(e), start);
             throw e;
         }
     }

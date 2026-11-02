@@ -69,10 +69,9 @@ public class MatchRecommendAiAgent {
                 outcome = AiMetrics.OUTCOME_FALLBACK;
             }
             return response;
-        } catch (AiException e) {
-            if (e.getStatus().is5xxServerError()) {
-                outcome = AiMetrics.OUTCOME_ERROR;
-            }
+        } catch (RuntimeException e) {
+            // 4xx 업무 거절은 rejected, 5xx와 예상 못 한 예외는 error. 성공률에 섞지 않는다.
+            outcome = AiMetrics.outcomeOf(e);
             throw e;
         } finally {
             metrics.record(AiMetrics.TYPE_RECOMMEND, outcome, start);

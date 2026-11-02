@@ -5,6 +5,9 @@ x-app-env: &app-env
   SPRING_PROFILES_ACTIVE: dev
   CONFIG_SERVER_URL: http://config-service:8888
   EUREKA_URL: http://discovery-service:8761/eureka
+  # 앱 컨테이너는 호스트 포트가 아니라 Compose 서비스명과 내부 포트로 span을 전송한다.
+  MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://zipkin:9411/api/v2/spans
+  MANAGEMENT_TRACING_SAMPLING_PROBABILITY: "1.0"
   MARIADB_HOST_PORT: 3306
   REDIS_HOST: redis
   REDIS_HOST_PORT: 6379

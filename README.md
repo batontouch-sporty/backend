@@ -31,7 +31,7 @@ docker compose up -d mariadb redis kafka    # 인프라만
 
 서비스 설정은 [config-repo](https://github.com/batontouch-sporty/config-repo)에 있고, 각 서비스의 `application.yml`에는 이름·포트·기본 프로필(`local`)·Config 주소만 있습니다(ai-service는 OpenAI 키 기본값도 둡니다). 서비스는 Config Server에 붙지 못하면 기동하지 않습니다. 설정을 바꿀 때는 config-repo에 PR을 올립니다.
 
-IDE에서 서비스를 띄울 때는 Compose로 인프라와 config-service를 먼저 띄웁니다. 프로필을 따로 주지 않으면 `local`로 뜨고 `.env`의 포트로 붙습니다.
+IDE에서 서비스를 띄울 때는 Compose로 인프라와 config-service를 먼저 띄웁니다. 프로필을 따로 주지 않으면 `local`로 뜨고 `.env`의 포트로 붙습니다. Compose의 discovery-service는 호스트에 포트를 열지 않아서, IDE로 띄운 서비스는 Eureka에 등록되지 않습니다. 단독 기동과 자기 API 확인까지만 됩니다.
 
 ```bash
 docker compose up -d --wait mariadb redis kafka zipkin config-service

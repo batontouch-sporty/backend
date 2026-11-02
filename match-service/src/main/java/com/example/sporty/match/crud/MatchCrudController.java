@@ -57,6 +57,13 @@ public class MatchCrudController {
         return ResponseEntity.noContent().build();
     }
 
+    @PatchMapping("/{matchId}/cancel")
+    public MatchDtos.Cancelled cancel(
+            @PathVariable Long matchId,
+            @RequestHeader(value = "X-User-Id", required = false) String identity) {
+        return service.cancel(matchId, user(identity, true));
+    }
+
     private static Long user(String identity, boolean required) {
         if (identity == null && !required) return null;
         try {

@@ -9,9 +9,11 @@ import org.springframework.format.annotation.DateTimeFormat;
 import java.time.LocalDateTime;
 import java.util.List;
 
-/** External names follow A9–A13/A16; serviceId is the facility service's internal PK. */
+/** External names follow A9–A13/A16/A17; serviceId is the facility service's internal PK. */
 public final class MatchDtos {
     private MatchDtos() {}
+
+    public record Cancelled(Long matchId, MatchStatus status) {}
 
     public record Create(
             @NotNull(message = "필수입니다.") @Positive(message = "1 이상이어야 합니다.") Long serviceId,

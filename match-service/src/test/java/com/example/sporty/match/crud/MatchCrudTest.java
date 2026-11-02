@@ -9,6 +9,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.example.sporty.match.domain.*;
 import com.example.sporty.match.integration.*;
 import com.example.sporty.match.repository.*;
+import com.example.sporty.match.participation.ParticipationService;
+import com.example.sporty.match.participation.ParticipationProblem;
 import com.example.sporty.match.withdrawal.MemberLocks;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -25,6 +27,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.*;
 import java.util.*;
+import java.util.concurrent.*;
 
 @SpringBootTest(
         properties = {
@@ -49,6 +52,7 @@ class MatchCrudTest {
     @Autowired ObjectMapper mapper;
     @Autowired MockMvc mvc;
     @Autowired PlatformTransactionManager manager;
+    @Autowired ParticipationService participation;
     @MockitoBean MatchRemoteChecks checks;
 
     @MockitoBean(name = "participationMemberLocks")
@@ -395,6 +399,157 @@ class MatchCrudTest {
         assertThat(waitlist.count()).isZero();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM outbox_event", Integer.class))
                 .isZero();
+    }
+
+    @Test
+    void ownerCancelPreservesPeopleAndWritesStatusEventOnce() throws Exception {
+        Long id = service.create(1L, request(3));
+        participant(id, 2L);
+        waitlist.saveAndFlush(new MatchWaitlistEntity(matches.findById(id).orElseThrow(), 3L));
+        clearInvocations(locks, checks);
+        mvc.perform(patch("/api/matches/" + id + "/cancel").header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.matchId").value(id))
+                .andExpect(jsonPath("$.status").value("CANCELLED"));
+        var match = matches.findById(id).orElseThrow();
+        assertThat(match.getCancelledAt()).isNotNull();
+        assertThat(match.getStatusChangedAt()).isEqualTo(match.getCancelledAt());
+        assertThat(match.getCancelReason()).isEqualTo("OWNER_CANCEL");
+        assertThat(participants.countByMatch_Id(id)).isEqualTo(2);
+        assertThat(waitlist.count()).isEqualTo(1);
+        var payload = mapper.readTree(jdbc.queryForObject(
+                "SELECT payload FROM outbox_event WHERE event_type='match.status-changed.v1'",
+                String.class));
+        assertThat(payload.path("from").asText()).isEqualTo("RECRUITING");
+        assertThat(payload.path("to").asText()).isEqualTo("CANCELLED");
+        assertThat(payload.path("participantIds").size()).isEqualTo(2);
+        assertThat(payload.path("reason").asText()).isEqualTo("방장 요청으로 모임 취소");
+        verify(locks).lock(1L);
+        verifyNoInteractions(checks);
+        mvc.perform(patch("/api/matches/" + id + "/cancel").header("X-User-Id", "1"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("MATCH_CANCEL_NOT_ALLOWED"));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM outbox_event", Integer.class)).isEqualTo(1);
+    }
+
+    @Test
+    void ownerCancelAllowsClosedAndRejectsNonOwnerMissingIdentityAndMissingMatch() throws Exception {
+        Long id = service.create(1L, request(2));
+        participant(id, 2L);
+        new TransactionTemplate(manager).executeWithoutResult(tx ->
+                matches.findById(id).orElseThrow().closeRecruitment(start.minusHours(1)));
+        mvc.perform(patch("/api/matches/" + id + "/cancel"))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(patch("/api/matches/" + id + "/cancel").header("X-User-Id", "2"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("MATCH_CANCEL_FORBIDDEN"));
+        mvc.perform(patch("/api/matches/999999/cancel").header("X-User-Id", "1"))
+                .andExpect(status().isNotFound());
+        mvc.perform(patch("/api/matches/" + id + "/cancel").header("X-User-Id", "1"))
+                .andExpect(status().isOk());
+        assertThat(mapper.readTree(jdbc.queryForObject("SELECT payload FROM outbox_event", String.class))
+                .path("from").asText()).isEqualTo("CLOSED");
+    }
+
+    @Test
+    void ownerCancelRejectsRunningCompletedAndPastStartEvenBeforeSchedulerRuns() {
+        for (var status : List.of(MatchStatus.IN_PROGRESS, MatchStatus.COMPLETED)) {
+            Long id = service.create(1L, request(3));
+            new TransactionTemplate(manager).executeWithoutResult(tx ->
+                    matches.findById(id).orElseThrow().changeStatus(status, start));
+            assertThatThrownBy(() -> service.cancel(id, 1L)).isInstanceOfSatisfying(
+                    MatchCrudProblem.class, e -> assertThat(e.code()).isEqualTo("MATCH_CANCEL_NOT_ALLOWED"));
+            assertThat(matches.findById(id).orElseThrow().getCancelledAt()).isNull();
+        }
+        Long id = service.create(1L, request(3));
+        jdbc.update("UPDATE matches SET start_at=? WHERE id=?",
+                LocalDateTime.now(ZoneId.of("Asia/Seoul")).minusSeconds(1), id);
+        assertThatThrownBy(() -> service.cancel(id, 1L)).isInstanceOfSatisfying(
+                MatchCrudProblem.class, e -> assertThat(e.code()).isEqualTo("MATCH_CANCEL_NOT_ALLOWED"));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM outbox_event", Integer.class)).isZero();
+    }
+
+    @Test
+    void ownerCancelRollsBackWhenOutboxCannotBeWritten() {
+        Long id = service.create(1L, request(3));
+        jdbc.execute("ALTER TABLE outbox_event ADD CONSTRAINT reject_cancel_event"
+                + " CHECK(event_type <> 'match.status-changed.v1')");
+        try {
+            assertThatThrownBy(() -> service.cancel(id, 1L))
+                    .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+            var match = matches.findById(id).orElseThrow();
+            assertThat(match.getStatus()).isEqualTo(MatchStatus.RECRUITING);
+            assertThat(match.getCancelledAt()).isNull();
+            assertThat(match.getCancelReason()).isNull();
+            assertThat(participants.countByMatch_Id(id)).isEqualTo(1);
+        } finally {
+            jdbc.execute("ALTER TABLE outbox_event DROP CONSTRAINT reject_cancel_event");
+        }
+    }
+
+    @Test
+    void cancelledMatchRejectsParticipationChangesAndKeepsRecords() throws Exception {
+        Long id = service.create(1L, request(3));
+        participant(id, 2L);
+        waitlist.saveAndFlush(new MatchWaitlistEntity(matches.findById(id).orElseThrow(), 3L));
+        when(checks.activeMember(anyLong())).thenAnswer(i ->
+                new MemberClient.Member(i.getArgument(0), "MALE", "ACTIVE", "SONGPA", List.of()));
+        service.cancel(id, 1L);
+        mvc.perform(post("/api/matches/" + id + "/participants").header("X-User-Id", "4"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("MATCH_RECRUITMENT_CLOSED"));
+        mvc.perform(delete("/api/matches/" + id + "/participants/me").header("X-User-Id", "2"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("MATCH_LEAVE_NOT_ALLOWED"));
+        mvc.perform(post("/api/matches/" + id + "/waitlist").header("X-User-Id", "4"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(delete("/api/matches/" + id + "/waitlist/me").header("X-User-Id", "3"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("WAITLIST_CANCEL_NOT_ALLOWED"));
+        assertThat(participants.countByMatch_Id(id)).isEqualTo(2);
+        assertThat(waitlist.count()).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM outbox_event", Integer.class)).isEqualTo(1);
+    }
+
+    @Test
+    void concurrentJoinWaitsForCancellationThenRejectsIt() throws Exception {
+        Long id = service.create(1L, request(3));
+        var cancelled = new CountDownLatch(1);
+        var joining = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        when(checks.activeMember(2L)).thenAnswer(i -> {
+            joining.countDown();
+            return new MemberClient.Member(2L, "MALE", "ACTIVE", "SONGPA", List.of());
+        });
+        var pool = Executors.newFixedThreadPool(2);
+        try {
+            var cancel = pool.submit(() -> new TransactionTemplate(manager).execute(tx -> {
+                service.cancel(id, 1L);
+                cancelled.countDown();
+                try {
+                    if (!release.await(10, TimeUnit.SECONDS)) throw new IllegalStateException("Join did not start");
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException(ex);
+                }
+                return null;
+            }));
+            assertThat(cancelled.await(10, TimeUnit.SECONDS)).isTrue();
+            var join = pool.submit(() -> participation.join(id, 2L));
+            assertThat(joining.await(10, TimeUnit.SECONDS)).isTrue();
+            release.countDown();
+            cancel.get(10, TimeUnit.SECONDS);
+            assertThatThrownBy(() -> join.get(10, TimeUnit.SECONDS))
+                    .isInstanceOf(ExecutionException.class)
+                    .hasCauseInstanceOf(ParticipationProblem.class)
+                    .satisfies(ex -> assertThat(((ParticipationProblem) ex.getCause()).code())
+                            .isEqualTo("MATCH_RECRUITMENT_CLOSED"));
+            assertThat(participants.countByMatch_Id(id)).isEqualTo(1);
+            assertThat(matches.findById(id).orElseThrow().getStatus()).isEqualTo(MatchStatus.CANCELLED);
+        } finally {
+            release.countDown();
+            pool.shutdownNow();
+        }
     }
 
     @Test

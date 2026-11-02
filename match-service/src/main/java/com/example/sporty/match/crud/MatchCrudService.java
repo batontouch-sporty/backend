@@ -213,6 +213,24 @@ public class MatchCrudService {
         matches.deleteHardById(matchId); // R8 restricts participants and cascades waitlist rows.
     }
 
+    @Transactional
+    public MatchDtos.Cancelled cancel(Long matchId, Long userId) {
+        validId(matchId);
+        validId(userId);
+        locks.lock(userId);
+        var match = locked(matchId);
+        owner(matchId, userId, "MATCH_CANCEL_FORBIDDEN");
+        var changedAt = now();
+        if (!Set.of(MatchStatus.RECRUITING, MatchStatus.CLOSED).contains(match.getStatus())
+                || !match.getStartAt().isAfter(changedAt))
+            throw problem(400, "MATCH_CANCEL_NOT_ALLOWED", "시작 전 모집 중이거나 마감된 매치만 취소할 수 있습니다.");
+        var from = match.getStatus();
+        match.cancel("OWNER_CANCEL", changedAt);
+        events.statusChanged(match, from, "방장 요청으로 모임 취소");
+        matches.flush();
+        return new MatchDtos.Cancelled(match.getId(), match.getStatus());
+    }
+
     public List<MatchDtos.Mine> mine(Long userId) {
         validId(userId);
         var rows = participants.findAllByUserIdOrderByMatch_StartAtDescMatch_IdDesc(userId);

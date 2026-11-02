@@ -4,7 +4,8 @@ WORKDIR /src
 COPY . .
 RUN --mount=type=cache,target=/root/.gradle sh gradlew --no-daemon bootJar -x :legacy-sporty:bootJar
 
-FROM eclipse-temurin:17-jre
+FROM eclipse-temurin:17-jre-alpine
+RUN apk add --no-cache curl
 COPY --from=build /src/config-service/build/libs/*.jar /app.jar
 # nobody는 홈 폴더가 없어 JGit이 설정 파일을 만들 곳을 따로 준다.
 ENV XDG_CONFIG_HOME=/tmp

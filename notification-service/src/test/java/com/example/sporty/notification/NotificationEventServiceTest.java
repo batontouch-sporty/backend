@@ -118,18 +118,54 @@ class NotificationEventServiceTest {
         assertThat(processedEvents.existsById(eventId)).isTrue();
     }
 
-    // 마감·취소가 아닌 상태 변경(탈퇴로 인한 모집 재개 포함)은 알림 없이 처리 기록만
+    // 방장이 직접 취소(A17·A13)해도 방장을 포함한 참가자 전원에게 같은 문구로 남긴다
+    @Test
+    void ownerCancelNotifiesOwnerToo() {
+        service.handleMatchStatusChanged(new MatchStatusChangedEvent(newEventId(), 57L, "주말 풋살",
+                "RECRUITING", "CANCELLED", OWNER, List.of(OWNER, USER), "방장 요청으로 모임 취소"));
+
+        assertThat(notifications.findAll()).hasSize(2);
+        assertThat(only(OWNER).getBody()).isEqualTo("'주말 풋살' 모임이 취소됐어요 (사유: 방장 요청으로 모임 취소)");
+        assertThat(only(USER).getBody()).isEqualTo(only(OWNER).getBody());
+    }
+
+    // IN_PROGRESS → 방장을 포함한 참가자 전원에게 시작 알림. 같은 ID가 두 번 들어 있어도 한 번
+    @Test
+    void inProgressNotifiesEveryParticipant() {
+        service.handleMatchStatusChanged(new MatchStatusChangedEvent(newEventId(), 57L, "주말 풋살",
+                "CLOSED", "IN_PROGRESS", OWNER, Arrays.asList(OWNER, USER, USER, null), null));
+
+        assertThat(notifications.findAll()).hasSize(2);
+        assertThat(only(USER).getType()).isEqualTo(NotificationType.STATUS_CHANGED);
+        assertThat(only(USER).getBody()).isEqualTo("'주말 풋살' 모임이 시작됐어요");
+        assertThat(only(OWNER).getBody()).isEqualTo("'주말 풋살' 모임이 시작됐어요");
+        assertThat(only(OWNER).getTargetMatchId()).isEqualTo(57L);
+    }
+
+    // 같은 시작 이벤트를 다시 받아도 한 번만 저장
+    @Test
+    void sameInProgressEventIsSavedOnce() {
+        String eventId = newEventId();
+        var event = new MatchStatusChangedEvent(eventId, 57L, "주말 풋살",
+                "RECRUITING", "IN_PROGRESS", OWNER, List.of(OWNER, USER), null);
+        service.handleMatchStatusChanged(event);
+        service.handleMatchStatusChanged(event);
+
+        assertThat(notifications.findAll()).hasSize(2);
+    }
+
+    // 마감·취소·시작이 아닌 상태 변경(종료, 탈퇴로 인한 모집 재개 포함)은 알림 없이 처리 기록만
     @Test
     void otherStatusChangesAreRecordedWithoutNotification() {
-        String inProgress = newEventId();
+        String completed = newEventId();
         String reopened = newEventId();
-        service.handleMatchStatusChanged(new MatchStatusChangedEvent(inProgress, 57L, "주말 풋살",
-                "CLOSED", "IN_PROGRESS", OWNER, List.of(OWNER, USER), null));
+        service.handleMatchStatusChanged(new MatchStatusChangedEvent(completed, 57L, "주말 풋살",
+                "IN_PROGRESS", "COMPLETED", OWNER, List.of(OWNER, USER), null));
         service.handleMatchStatusChanged(new MatchStatusChangedEvent(reopened, 57L, "주말 풋살",
                 "CLOSED", "RECRUITING", OWNER, List.of(), "참가자 회원 탈퇴로 인한 모집 재개"));
 
         assertThat(notifications.findAll()).isEmpty();
-        assertThat(processedEvents.existsById(inProgress)).isTrue();
+        assertThat(processedEvents.existsById(completed)).isTrue();
         assertThat(processedEvents.existsById(reopened)).isTrue();
     }
 

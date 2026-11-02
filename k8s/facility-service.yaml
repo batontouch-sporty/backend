@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: facility-service
+  namespace: sporty
+  labels:
+    app.kubernetes.io/name: facility-service
+    app.kubernetes.io/component: facility
+    app.kubernetes.io/part-of: sporty
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: facility-service
+  ports:
+    - name: http
+      port: 8083
+      targetPort: http
+      protocol: TCP

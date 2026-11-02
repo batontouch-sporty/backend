@@ -38,3 +38,7 @@ I1 `GET /internal/users/{id}`, I2 `GET /internal/users?ids=1,2`, I3 `GET /intern
 ## 실제 회원 연결 테스트
 
 MATCH_LIVE_MEMBER=true로 LiveMemberContractTest를 실행한다. 전용 localhost:18181에서 실제 user-service를 실행하고 회원 ID 1(남성 ACTIVE), 2(여성 ACTIVE), 3(남성 WITHDRAWN), 4(남성 WITHDRAWING)를 준비한다. 프로필 닉네임은 ID 1이 Live active, ID 3이 Live history이고 ID 999는 비워 둔다. 테스트는 읽기 전용이다. 전용 테스트 DB를 사용하며 실행 시 --rerun-tasks로 외부 서버 상태 변경을 반영한다.
+
+## API 명세 정합성
+
+PR #77·#86 이후 확정 A13 변경과 노션 A9~A13·A16 갱신 내역은 [API_CONTRACT.md](API_CONTRACT.md)에 정리한다. 기존 통합 검증 97항목은 당시 커밋의 기록이며 최신 삭제 보존 동작의 검증과 구분한다.

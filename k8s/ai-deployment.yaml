@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-service
+  namespace: sporty
+  labels:
+    app.kubernetes.io/name: ai-service
+    app.kubernetes.io/component: ai
+    app.kubernetes.io/part-of: sporty
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ai-service
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ai-service
+        app.kubernetes.io/component: ai
+        app.kubernetes.io/part-of: sporty
+    spec:
+      containers:
+        - name: ai-service
+          image: sporty-ai-service:k8s-draft
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8084
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: app-common-config
+            - configMapRef:
+                name: app-client-config
+            - configMapRef:
+                name: tracing-config
+          env:
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ai-service-secret
+                  key: OPENAI_API_KEY
+                  optional: true
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+              scheme: HTTP
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 24
+            successThreshold: 1
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+              scheme: HTTP
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+            successThreshold: 1
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+              scheme: HTTP
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+            successThreshold: 1
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      terminationGracePeriodSeconds: 30

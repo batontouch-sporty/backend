@@ -9,6 +9,22 @@ resources:
   - discovery-configmap.yaml
   - discovery-deployment.yaml
   - discovery-service.yaml
+  - config-configmap.yaml
+  - config-deployment.yaml
+  - config-service.yaml
+  - app-client-configmap.yaml
+  - match-deployment.yaml
+  - match-service.yaml
+  - gateway-deployment.yaml
+  - gateway-service.yaml
+  - user-deployment.yaml
+  - user-service.yaml
+  - facility-deployment.yaml
+  - facility-service.yaml
+  - ai-deployment.yaml
+  - ai-service.yaml
+  - notification-deployment.yaml
+  - notification-service.yaml
   - tracing-configmap.yaml
   - zipkin-deployment.yaml
   - zipkin-service.yaml
@@ -16,4 +32,25 @@ resources:
 images:
   - name: sporty-discovery-service
     newName: sporty-discovery-service
+    newTag: k8s-draft
+  - name: sporty-config-service
+    newName: sporty-config-service
+    newTag: k8s-draft
+  - name: sporty-match-service
+    newName: sporty-match-service
+    newTag: k8s-draft
+  - name: sporty-gateway-service
+    newName: sporty-gateway-service
+    newTag: k8s-draft
+  - name: sporty-user-service
+    newName: sporty-user-service
+    newTag: k8s-draft
+  - name: sporty-facility-service
+    newName: sporty-facility-service
+    newTag: k8s-draft
+  - name: sporty-ai-service
+    newName: sporty-ai-service
+    newTag: k8s-draft
+  - name: sporty-notification-service
+    newName: sporty-notification-service
     newTag: k8s-draft

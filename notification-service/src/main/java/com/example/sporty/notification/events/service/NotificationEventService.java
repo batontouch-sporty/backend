@@ -80,7 +80,9 @@ public class NotificationEventService {
         saveAll(event.eventId(), KafkaTopics.MATCH_JOINED, notifications);
     }
 
-    // match.status-changed.v1 → 마감(CLOSED)은 방장에게, 취소(CANCELLED)는 참가자에게 알림. 그 외 상태는 처리 기록만 남긴다.
+    // match.status-changed.v1 → 마감(CLOSED)은 방장에게, 취소(CANCELLED)·시작(IN_PROGRESS)은 방장을 포함한 참가자 전원에게 알림.
+    // 방장이 직접 취소해도 방장에게 남긴다: 내 알림 목록에서 취소 기록을 확인하고, 다른 참가자와 같은 문구를 받는다.
+    // 그 외 상태(COMPLETED, 탈퇴로 인한 모집 재개 등)는 처리 기록만 남긴다.
     @Transactional
     public void handleMatchStatusChanged(MatchStatusChangedEvent event) {
         requireEventId(event.eventId());
@@ -91,12 +93,13 @@ public class NotificationEventService {
         String to = Objects.requireNonNullElse(event.to(), "");
         List<Long> recipients = switch (to) {
             case "CLOSED" -> ownerOnly(event);
-            case "CANCELLED" -> event.participantIds() == null ? List.of() : event.participantIds();
+            case "CANCELLED", "IN_PROGRESS" -> event.participantIds() == null ? List.of() : event.participantIds();
             default -> List.of();
         };
         String message = switch (to) {
             case "CLOSED" -> quote(event.title()) + "모임 모집이 마감됐어요";
             case "CANCELLED" -> quote(event.title()) + "모임이 취소됐어요" + reasonSuffix(event.reason());
+            case "IN_PROGRESS" -> quote(event.title()) + "모임이 시작됐어요";
             default -> null;
         };
 

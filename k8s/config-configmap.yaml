@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: config-service-config
+  namespace: sporty
+  labels:
+    app.kubernetes.io/name: config-service
+    app.kubernetes.io/component: config
+    app.kubernetes.io/part-of: sporty
+data:
+  SPRING_PROFILES_ACTIVE: "prod"
+  MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED: "true"
+  EUREKA_URL: "http://discovery-service:8761/eureka"
+  SPRING_CLOUD_CONFIG_SERVER_HEALTH_ENABLED: "false"

@@ -19,5 +19,6 @@ public interface MatchParticipantRepository extends JpaRepository<MatchParticipa
 
     Optional<MatchParticipantEntity> findByMatch_IdAndUserId(Long matchId, Long userId);
 
+    /** Used by physical FK/CASCADE persistence tests; A13 cancellation preserves these rows. */
     void deleteAllByMatch_Id(Long matchId);
 }

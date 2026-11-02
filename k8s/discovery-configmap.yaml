@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: discovery-service-config
+  namespace: sporty
+  labels:
+    app.kubernetes.io/name: discovery-service
+    app.kubernetes.io/component: discovery
+    app.kubernetes.io/part-of: sporty
+data:
+  SPRING_PROFILES_ACTIVE: "prod"
+  MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED: "true"

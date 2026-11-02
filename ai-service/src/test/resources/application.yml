@@ -1,0 +1,17 @@
+# 테스트 전용. main의 application.yml 대신 이 파일을 읽는다.
+# OpenAI는 각 테스트에서 DraftChat을 목으로 바꿔 실제로 부르지 않는다.
+spring:
+  application:
+    name: ai-service
+  cloud:
+    config:
+      enabled: false
+    discovery:
+      enabled: false
+  ai:
+    openai:
+      api-key: test-only-not-a-real-key
+
+eureka:
+  client:
+    enabled: false

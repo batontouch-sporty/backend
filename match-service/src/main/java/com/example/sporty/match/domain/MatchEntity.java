@@ -162,7 +162,7 @@ public class MatchEntity {
     private static void validateDetails(Details details) {
         Objects.requireNonNull(details);
         if (details.title() == null || details.title().isBlank()
-                || details.maxParticipant() < 1
+                || details.maxParticipant() < 2
                 || details.startAt() == null || details.endAt() == null
                 || !details.endAt().isAfter(details.startAt())) {
             throw new IllegalArgumentException("Invalid match title, capacity or time range");

@@ -56,6 +56,13 @@ public class MatchCrudService {
 
     @Transactional
     public Long create(Long userId, MatchDtos.Create request) {
+        return createResult(userId,request).matchId();
+    }
+
+    public record CreationResult(long matchId,com.example.sporty.match.deposit.DepositSaga.Accepted accepted) {}
+
+    @Transactional
+    public CreationResult createResult(Long userId, MatchDtos.Create request) {
         validId(userId);
         validCapacity(request.maxParticipant());
         validPeriod(request.startAt(), request.endAt());
@@ -66,9 +73,10 @@ public class MatchCrudService {
         if(deposits.isEnabled()) match.beginCreation();
         matches.saveAndFlush(match);
         var owner = new MatchParticipantEntity(match,userId,MatchParticipantRole.OWNER);
-        if(deposits.isEnabled()) deposits.begin(owner,"CREATE");
+        com.example.sporty.match.deposit.DepositSaga.Accepted accepted=null;
+        if(deposits.isEnabled()) accepted=deposits.begin(owner,"CREATE");
         else participants.saveAndFlush(owner);
-        return match.getId();
+        return new CreationResult(match.getId(),accepted);
     }
 
     public List<MatchDtos.Summary> search(MatchDtos.Search q) {
@@ -191,7 +199,7 @@ public class MatchCrudService {
                     var from = match.getStatus();
                     match.update(request.details(match.getSportType()), snapshot);
                     var next =
-                            current >= request.maxParticipant()
+                            current >= request.maxParticipant() || (deposits.isEnabled() && deposits.hasWaitlistPriority(matchId))
                                     ? MatchStatus.CLOSED
                                     : MatchStatus.RECRUITING;
                     if (from != next) {

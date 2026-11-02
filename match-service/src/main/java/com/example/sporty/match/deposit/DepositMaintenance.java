@@ -20,10 +20,17 @@ public class DepositMaintenance {
     @Scheduled(fixedDelayString="${match.deposit.maintenance-delay-ms:10000}",initialDelayString="${match.deposit.maintenance-delay-ms:10000}")
     public void maintain() {
         var pending=tx.execute(s->store.pending());
-        for(var r:pending) try { saga.expire(r.requestId); }
+        var now=java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC);
+        for(var r:pending) {
+            if(now.isBefore(r.deadlineAt)) continue;
+            try { saga.expire(r.requestId); }
             catch(RuntimeException e) { LoggerFactory.getLogger(getClass()).warn("Deposit timeout retry: {}",r.requestId,e); }
+        }
         // Explicit retry path after member-service failures, busy members, or rejected promotions.
-        for(var id:jdbc.queryForList("SELECT DISTINCT match_id FROM match_waitlist ORDER BY match_id",Long.class)) {
+        for(var id:jdbc.queryForList("SELECT m.id FROM matches m WHERE m.status IN ('CLOSED','RECRUITING')"
+                + " AND m.start_at>? AND (m.status='CLOSED' OR EXISTS(SELECT 1 FROM match_waitlist w WHERE w.match_id=m.id))"
+                + " AND (SELECT COUNT(*) FROM match_participants p WHERE p.match_id=m.id AND p.participation_status='CONFIRMED')<m.max_participant"
+                + " ORDER BY m.id",Long.class,java.time.LocalDateTime.now(java.time.ZoneId.of("Asia/Seoul")))) {
             try { promotion.promote(id); }
             catch(RuntimeException e) { LoggerFactory.getLogger(getClass()).warn("Waitlist promotion retry: {}",id,e); }
         }

@@ -65,7 +65,7 @@ public class WaitlistPromotion {
                 var member = checks.activeMember(row.getUserId());
                 checks.checkParticipantGender(member, match.getGenderGroup().name());
             } catch (MatchDependencyException ex) {
-                if (!Set.of("USER_NOT_ACTIVE", "MATCH_USER_NOT_FOUND", "MATCH_GENDER_NOT_ALLOWED")
+                if (!Set.of("USER_NOT_ACTIVE", "MATCH_USER_NOT_FOUND", "MATCH_GENDER_NOT_ALLOWED", "PARTICIPATION_SUSPENDED")
                         .contains(ex.code())) throw ex;
                 waitlist.delete(row);
                 waitlist.flush();

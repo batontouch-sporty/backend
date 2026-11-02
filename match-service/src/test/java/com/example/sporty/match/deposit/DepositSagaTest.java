@@ -47,6 +47,7 @@ class DepositSagaTest {
     @Autowired DepositSaga saga;
     @Autowired DepositStore store;
     @Autowired DepositPromotion promotion;
+    @Autowired DepositMaintenance maintenance;
     @Autowired MatchCrudService crud;
     @Autowired ParticipationService participation;
     @Autowired WaitlistService waiting;
@@ -271,5 +272,40 @@ class DepositSagaTest {
         assertThat(saga.status(request,2).status()).isEqualTo("CANCELLED");
         assertThat(participants.countByMatch_Id(m)).isOne();
         assertThat(outbox(DepositStore.REFUND)).isZero();
+    }
+    @Test void pendingPromotionKeepsRecruitmentClosedAndBlocksNewDirectRequests() throws Exception {
+        long m=ready(2); participation.join(m,2L); charged(id(m,2)); waiting.register(m,3L);
+        participation.leave(m,2L);
+        assertThat(matches.findById(m).orElseThrow().getStatus()).isEqualTo(MatchStatus.CLOSED);
+        assertThat(participants.countByMatch_Id(m)).isOne();
+        mvc.perform(post("/api/matches/"+m+"/participants").header("X-User-Id","4"))
+            .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("MATCH_RECRUITMENT_CLOSED"));
+        charged(id(m,3)); assertThat(saga.status(id(m,3),3).status()).isEqualTo("CONFIRMED");
+    }
+    @Test void earlierDirectPendingResultCannotTakeWaitersVacancy() {
+        long m=ready(2); participation.join(m,4L); String direct=id(m,4);
+        participation.join(m,2L); charged(id(m,2)); waiting.register(m,3L); participation.leave(m,2L);
+        charged(direct);
+        assertThat(saga.status(direct,4).status()).isEqualTo("CANCELLED");
+        assertThat(saga.status(direct,4).failureCode()).isEqualTo("MATCH_RECRUITMENT_CLOSED");
+        charged(id(m,3)); assertThat(participants.countByMatch_Id(m)).isEqualTo(2);
+        assertThat(saga.status(id(m,3),3).status()).isEqualTo("CONFIRMED");
+    }
+    @Test void exhaustedFailedPromotionsReopenRecruitmentOnMaintenanceRetry() throws Exception {
+        long m=ready(2); participation.join(m,2L); charged(id(m,2)); waiting.register(m,3L); participation.leave(m,2L);
+        result("user.deposit-charge-rejected.v1",id(m,3),Map.of("reason","INSUFFICIENT_POINTS"));
+        maintenance.maintain();
+        assertThat(matches.findById(m).orElseThrow().getStatus()).isEqualTo(MatchStatus.RECRUITING);
+        mvc.perform(post("/api/matches/"+m+"/participants").header("X-User-Id","4")).andExpect(status().isAccepted());
+    }
+    @Test void maintenanceAvoidsMemberLocksForRequestsBeforeDeadline() {
+        long m=create(2); String request=id(m,1); clearInvocations(locks);
+        maintenance.maintain();
+        verify(locks,never()).lock(1L);
+        assertThat(saga.status(request,1).status()).isEqualTo("PENDING");
+        tx.executeWithoutResult(s->{var r=store.locked(request); r.deadlineAt=OffsetDateTime.now().minusMinutes(1); store.save(r);});
+        maintenance.maintain();
+        verify(locks).lock(1L);
+        assertThat(saga.status(request,1).status()).isEqualTo("CANCELLED");
     }
 }

@@ -141,6 +141,7 @@ public class WithdrawalStore {
     /** Reopen a pre-start closed match only when cleanup has actually freed capacity. */
     public boolean reopen(Match match, Instant now) {
         if (!"CLOSED".equals(match.status())) return false;
+        if(deposits!=null && deposits.isEnabled() && deposits.hasWaitlistPriority(match.id())) return false;
         long count = jdbc.queryForList(
                 "SELECT match_participant_id FROM match_participants WHERE match_id=? AND participation_status='CONFIRMED' FOR UPDATE",
                 Long.class,match.id()).size();

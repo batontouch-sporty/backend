@@ -62,6 +62,8 @@ public class ParticipationService {
             throw problem(409, "MATCH_ALREADY_JOINED", "이미 참가 중인 매치입니다.");
         if (match.getStatus() != MatchStatus.RECRUITING)
             throw problem(400, "MATCH_RECRUITMENT_CLOSED", "모집이 마감된 매치입니다.");
+        if (deposits.isEnabled() && deposits.hasWaitlistPriority(matchId))
+            throw problem(400,"MATCH_RECRUITMENT_CLOSED","대기자 승급 처리 중인 매치입니다.");
         if (!match.getStartAt().isAfter(now()))
             throw problem(400, "MATCH_ALREADY_STARTED", "이미 시작된 매치입니다.");
         if (participants.countByMatch_Id(matchId) >= match.getMaxParticipant())
@@ -117,6 +119,7 @@ public class ParticipationService {
         var now = now();
         if (match.getStatus() == MatchStatus.CLOSED
                 && match.getStartAt().isAfter(now)
+                && (!deposits.isEnabled() || !deposits.hasWaitlistPriority(matchId))
                 && participants.countByMatch_Id(matchId) < match.getMaxParticipant()) {
             match.reopenRecruitment(now);
             events.statusChanged(match, MatchStatus.CLOSED, "참가 취소로 모집 재개");

@@ -5,6 +5,8 @@ import com.example.sporty.match.domain.*;
 import com.example.sporty.match.integration.*;
 import com.example.sporty.match.participation.*;
 import com.example.sporty.match.repository.MatchParticipantRepository;
+import com.example.sporty.match.repository.MatchWaitlistRepository;
+import com.example.sporty.match.waitlist.WaitlistService;
 import com.example.sporty.match.withdrawal.MemberLocks;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.kafka.clients.consumer.*;
@@ -36,6 +38,8 @@ class DepositKafkaBrokerTest {
     @Autowired MatchCrudService crud;
     @Autowired ParticipationService participation;
     @Autowired MatchParticipantRepository participants;
+    @Autowired MatchWaitlistRepository waitlist;
+    @Autowired WaitlistService waiting;
     @Autowired DepositSaga saga;
     @Autowired ObjectMapper mapper;
     @Autowired JdbcTemplate jdbc;
@@ -53,7 +57,7 @@ class DepositKafkaBrokerTest {
         try(var consumer=new KafkaConsumer<String,String>(Map.of("bootstrap.servers",System.getenv("DEPOSIT_TEST_BROKER"),
                 "group.id","deposit-review-"+UUID.randomUUID(),"key.deserializer",StringDeserializer.class,
                 "value.deserializer",StringDeserializer.class,"auto.offset.reset","earliest","enable.auto.commit",false))) {
-            consumer.subscribe(List.of(DepositStore.CHARGE,DepositStore.REFUND,"user.deposit-charged.v1.DLT"));
+            consumer.subscribe(List.of(DepositStore.CHARGE,DepositStore.REFUND,"user.deposit-charged.v1.DLT","user.participation-suspended.v1.DLT"));
             var start=LocalDateTime.now(ZoneId.of("Asia/Seoul")).plusDays(2);
             long m=crud.create(1L,new MatchDtos.Create(12L,"Broker fixture",null,start,start.plusHours(1),3,SkillLevel.BEGINNER,SportType.TENNIS,GenderGroup.MIXED));
             String owner=participants.findByMatch_IdAndUserId(m,1L).orElseThrow().getRequestId();
@@ -67,6 +71,22 @@ class DepositKafkaBrokerTest {
             assertThat(mapper.readTree(find(consumer,DepositStore.REFUND,join).value()).path("reason").asText()).isEqualTo("PARTICIPANT_CANCELLED");
             send("user.deposit-refund-completed.v1",join,m,2,Map.of("outcome","RETURNED","creditedPoints",10));
             await(join,2,"COMPLETED",true);
+            for(long user=3;user<=4;user++) {
+                participation.join(m,user);
+                String id=participants.findByMatch_IdAndUserId(m,user).orElseThrow().getRequestId();
+                send("user.deposit-charged.v1",id,m,user,Map.of()); await(id,user,"CONFIRMED",false);
+            }
+            waiting.register(m,5L);
+            String invalidSuspension=mapper.writeValueAsString(Map.of("eventId",UUID.randomUUID().toString(),
+                "userId",5,"occurredAt",OffsetDateTime.now().toString(),"suspendedUntil",OffsetDateTime.now().plusDays(7).toString()));
+            kafka.send("user.participation-suspended.v1","5",invalidSuspension).get(10,TimeUnit.SECONDS);
+            find(consumer,"user.participation-suspended.v1.DLT",invalidSuspension);
+            assertThat(waitlist.existsByMatch_IdAndUserId(m,5L)).isTrue();
+            send("user.participation-suspended.v1",UUID.randomUUID().toString(),m,5,
+                Map.of("suspendedUntil",OffsetDateTime.now().plusDays(7).toString()));
+            long suspensionDeadline=System.nanoTime()+Duration.ofSeconds(20).toNanos();
+            while(waitlist.existsByMatch_IdAndUserId(m,5L) && System.nanoTime()<suspensionDeadline) Thread.sleep(50);
+            assertThat(waitlist.existsByMatch_IdAndUserId(m,5L)).isFalse();
             String malformed="{invalid-"+UUID.randomUUID();
             kafka.send("user.deposit-charged.v1","2",malformed).get(10,TimeUnit.SECONDS);
             var dlt=find(consumer,"user.deposit-charged.v1.DLT",malformed);

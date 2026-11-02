@@ -22,6 +22,7 @@ public class DepositSaga {
     private final ParticipationEvents events;
     private final MemberLocks locks;
     private final Duration timeout;
+    private final DepositPriority priority;
     private final boolean enabled;
     public boolean isEnabled() { return enabled; }
 
@@ -30,13 +31,16 @@ public class DepositSaga {
             MatchRemoteChecks checks, ParticipationEvents events,
             @Qualifier("participationMemberLocks") MemberLocks locks,
             @Value("${match.deposit.timeout:5m}") Duration timeout,
-            @Value("${match.deposit.enabled:true}") boolean enabled) {
+            @Value("${match.deposit.enabled:true}") boolean enabled,DepositPriority priority) {
         this.store=store; this.matches=matches; this.participants=participants; this.waitlist=waitlist;
         this.checks=checks; this.events=events; this.locks=locks; this.timeout=timeout; this.enabled=enabled;
+        this.priority=priority;
         if(timeout.isNegative()||timeout.isZero()) throw new IllegalArgumentException("Deposit timeout must be positive");
     }
 
     public record Accepted(String requestId,long matchId,String status) {}
+    @Transactional
+    public boolean hasWaitlistPriority(long matchId) { return priority.hasPriority(matchId); }
     public record Status(String requestId,long matchId,String requestType,String status,
                          String refundStatus,String failureCode,String failureMessage) {}
 
@@ -59,12 +63,6 @@ public class DepositSaga {
         if(r==null || r.userId!=userId) throw new ParticipationProblem(404,"REQUEST_NOT_FOUND","요청을 찾을 수 없습니다.");
         return new Status(r.requestId,r.matchId,"PROMOTE".equals(r.requestType)?"PROMOTION":r.requestType,
                 r.status,r.refundStatus,r.failureCode,r.failureMessage);
-    }
-
-    @Transactional
-    public Accepted acceptedForCreation(long matchId,long userId) {
-        var p=participants.findByMatch_IdAndUserId(matchId,userId).orElseThrow();
-        return new Accepted(p.getRequestId(),matchId,"PENDING");
     }
 
     /** A15/A13/A17 call inside their match transaction. Snapshot survives participant-row reuse. */
@@ -106,6 +104,7 @@ public class DepositSaga {
 
     @Transactional
     public void handle(String topic,JsonNode event) {
+        // Common contract includes the causal no-show requestId/matchId on suspension events too.
         String eventId=text(event,"eventId"), requestId=text(event,"requestId");
         UUID.fromString(eventId); UUID.fromString(requestId);
         long userId=positive(event,"userId"), matchId=positive(event,"matchId");
@@ -139,7 +138,9 @@ public class DepositSaga {
                 r.chargeAccepted=true;
                 if("CONFIRMED".equals(r.status)) break;
                 boolean creation="CREATE".equals(r.requestType);
+                boolean waitlistFirst="JOIN".equals(r.requestType) && priority.hasPriority(matchId);
                 boolean allowed="PENDING".equals(r.status) && current && refusal==null
+                        && !waitlistFirst
                         && OffsetDateTime.now(ZoneOffset.UTC).isBefore(r.deadlineAt)
                         && match.getStartAt().isAfter(now())
                         && (creation ? match.getStatus()==MatchStatus.CREATION_PENDING
@@ -158,6 +159,7 @@ public class DepositSaga {
                     r.status="CANCELLED";
                     if(r.failureCode==null) {
                         if(refusal!=null) r.failureCode=refusal;
+                        else if(waitlistFirst) r.failureCode="MATCH_RECRUITMENT_CLOSED";
                         else if(!match.getStartAt().isAfter(now())) r.failureCode="MATCH_ALREADY_STARTED";
                         else if(participants.findConfirmedForUpdate(matchId).size()>=match.getMaxParticipant()) r.failureCode="MATCH_FULL";
                         else r.failureCode="CONFIRMATION_FAILED";

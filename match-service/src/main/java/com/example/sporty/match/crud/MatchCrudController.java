@@ -23,9 +23,9 @@ public class MatchCrudController {
             @RequestHeader(value = "X-User-Id", required = false) String identity,
             @Valid @RequestBody MatchDtos.Create request) {
         long userId=user(identity,true);
-        long matchId=service.create(userId,request);
-        return deposits.isEnabled() ? ResponseEntity.accepted().body(deposits.acceptedForCreation(matchId,userId))
-                : ResponseEntity.status(201).body(matchId);
+        var result=service.createResult(userId,request);
+        return deposits.isEnabled() ? ResponseEntity.accepted().body(result.accepted())
+                : ResponseEntity.status(201).body(result.matchId());
     }
 
     @GetMapping

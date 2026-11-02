@@ -28,6 +28,7 @@ public class DepositKafkaConfiguration {
                 "enable.auto.commit",false,"auto.offset.reset","earliest")));
         var dlt=new DeadLetterPublishingRecoverer(kafka,(r,e)->new TopicPartition(r.topic()+".DLT",-1));
         dlt.setFailIfSendResultIsError(true);
+        // 11/02 team contract: 1-second interval, 3 retries, then <source topic>.DLT.
         var errors=new DefaultErrorHandler(dlt,new FixedBackOff(1000,3));
         f.setCommonErrorHandler(errors); f.getContainerProperties().setAckMode(ContainerProperties.AckMode.RECORD);
         return f;

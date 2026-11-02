@@ -20,13 +20,17 @@ public class DepositPromotion {
     private final MemberLocks locks;
     private final DepositSaga saga;
     private final DepositStore store;
+    private final DepositPriority priority;
+    private final com.example.sporty.match.participation.ParticipationEvents events;
     private final org.springframework.transaction.support.TransactionTemplate transactions;
     public DepositPromotion(MatchRepository matches, MatchParticipantRepository participants,
             MatchWaitlistRepository waitlist, MatchRemoteChecks checks,
-            @Qualifier("participationMemberLocks") MemberLocks locks, DepositSaga saga, DepositStore store, org.springframework.transaction.PlatformTransactionManager manager) {
+            @Qualifier("participationMemberLocks") MemberLocks locks, DepositSaga saga, DepositStore store, org.springframework.transaction.PlatformTransactionManager manager,
+            DepositPriority priority,com.example.sporty.match.participation.ParticipationEvents events) {
         this.matches=matches; this.participants=participants; this.waitlist=waitlist;
         this.checks=checks; this.locks=locks; this.saga=saga;
         this.store=store;
+        this.priority=priority; this.events=events;
         this.transactions=new org.springframework.transaction.support.TransactionTemplate(manager);
         this.transactions.setPropagationBehavior(org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
@@ -42,6 +46,15 @@ public class DepositPromotion {
         var match=matches.findByIdForUpdate(matchId).orElse(null);
         if(match==null || !Set.of(MatchStatus.CLOSED,MatchStatus.RECRUITING).contains(match.getStatus())
                 || !match.getStartAt().isAfter(LocalDateTime.now(ZoneId.of("Asia/Seoul")))) return;
+        fill(match,matchId);
+        if(match.getStatus()==MatchStatus.CLOSED && participants.findConfirmedForUpdate(matchId).size()<match.getMaxParticipant()
+                && !priority.hasPriority(matchId)) {
+            match.reopenRecruitment(LocalDateTime.now(ZoneId.of("Asia/Seoul")));
+            events.statusChanged(match,MatchStatus.CLOSED,"대기자 승급 처리 종료로 모집 재개");
+        }
+    }
+
+    private void fill(MatchEntity match,long matchId) {
         long pendingPromotions=participants.findAllByMatch_Id(matchId).stream()
                 .filter(p->p.getParticipationStatus()==ParticipationStatus.PENDING)
                 .filter(p->{ var r=store.get(p.getRequestId()); return r!=null && "PROMOTE".equals(r.requestType); }).count();

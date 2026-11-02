@@ -35,6 +35,10 @@ public interface MatchParticipantRepository extends JpaRepository<MatchParticipa
     @Query("select p from MatchParticipantEntity p where p.match.id=?1 and p.participationStatus='CONFIRMED' order by p.id")
     List<MatchParticipantEntity> findConfirmedForUpdate(Long matchId);
 
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("select p from MatchParticipantEntity p where p.match.id=?1 and p.participationStatus='PENDING' order by p.id")
+    List<MatchParticipantEntity> findPendingForUpdate(Long matchId);
+
     /** Used by physical FK/CASCADE persistence tests; A13 cancellation preserves these rows. */
     void deleteAllByMatch_Id(Long matchId);
 }

@@ -4,43 +4,14 @@ server:
 spring:
   application:
     name: notification-service
+  profiles:
+    # IDE 실행은 local. Compose는 dev, K8s는 prod를 SPRING_PROFILES_ACTIVE로 준다.
+    default: local
   config:
-    # 로컬 실행 때는 저장소 루트의 .env(docker compose와 같은 파일)에서 DB 비밀번호·포트를 읽는다.
+    # 설정은 config-repo의 notification-service.yml·notification-service-<프로필>.yml에 있다. Config Server에 못 붙으면 기동하지 않는다.
+    # IDE 실행 전에 Compose로 config-service를 먼저 띄운다(docker compose up -d --wait config-service).
+    # 로컬 실행 때는 저장소 루트의 .env(docker compose와 같은 파일)에서 비밀값·포트를 읽는다.
     import:
-      - optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}
+      - configserver:${CONFIG_SERVER_URL:http://localhost:8888}
       - optional:file:./.env[.properties]
       - optional:file:../.env[.properties]
-  datasource:
-    driver-class-name: org.mariadb.jdbc.Driver
-    url: jdbc:mariadb://${NOTIFICATION_DB_HOST:localhost}:${MARIADB_HOST_PORT:3306}/notification_db
-    username: ${NOTIFICATION_DB_USERNAME:notification_app}
-    password: ${NOTIFICATION_APP_PASSWORD}
-  jpa:
-    hibernate:
-      ddl-auto: ${NOTIFICATION_DB_DDL_AUTO:validate}
-    open-in-view: false
-    properties:
-      hibernate:
-        dialect: org.hibernate.dialect.MariaDBDialect
-  kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:${KAFKA_HOST_PORT:9092}}
-    consumer:
-      group-id: notification-service
-      # 처음 붙을 때 이미 쌓여 있던 이벤트도 알림으로 만든다.
-      auto-offset-reset: earliest
-
-eureka:
-  instance:
-    instance-id: ${spring.application.name}:${spring.cloud.client.ip-address}:${server.port}
-    prefer-ip-address: true
-  client:
-    service-url:
-      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka}
-
-management:
-  endpoints:
-    web:
-      exposure:
-        include:
-          - health
-          - info

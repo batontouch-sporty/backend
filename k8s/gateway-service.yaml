@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway-service
+  namespace: sporty
+  labels:
+    app.kubernetes.io/name: gateway-service
+    app.kubernetes.io/component: gateway
+    app.kubernetes.io/part-of: sporty
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: gateway-service
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+      protocol: TCP
+    - name: management
+      port: 8001
+      targetPort: management
+      protocol: TCP

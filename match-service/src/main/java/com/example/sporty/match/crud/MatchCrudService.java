@@ -225,9 +225,8 @@ public class MatchCrudService {
                 || !match.getStartAt().isAfter(changedAt))
             throw problem(400, "MATCH_CANCEL_NOT_ALLOWED", "시작 전 모집 중이거나 마감된 매치만 취소할 수 있습니다.");
         var from = match.getStatus();
-        String reason = "방장 요청으로 모임 취소";
-        match.cancel(reason, changedAt);
-        events.statusChanged(match, from, reason);
+        match.cancel("OWNER_CANCEL", changedAt);
+        events.statusChanged(match, from, "방장 요청으로 모임 취소");
         matches.flush();
         return new MatchDtos.Cancelled(match.getId(), match.getStatus());
     }

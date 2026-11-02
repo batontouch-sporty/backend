@@ -24,16 +24,16 @@ enum은 match-service 안에 독립적으로 둔다. `MatchStatus`는 R7의 다�
   JOIN·EntityGraph는 옮기지 않는다.
 - 시작 후 수정과 정원 축소 제한은 서비스 계층에서 검사한다. 정원 변경 시 인원과
   `RECRUITING/CLOSED` 상태를 다시 계산한다.
-- 하나의 `match_db` 트랜잭션에서 하드 삭제한다. 먼저 `MatchRepository.findByIdForUpdate`로
-  매치 행을 잠그고, 잠금 상태에서 방장 권한·시작 전·모집 상태 등 삭제 허용 조건을 확인한다.
-  이어서 `MatchParticipantRepository.deleteAllByMatch_Id` 후 `flush()`, 그다음
-  `MatchRepository.deleteHardById`를 호출한다. DB가 대기열 행을 CASCADE로 삭제한다.
-  `CANCELLED` 소프트 취소는 매치·참가·대기 기록을 남긴다.
+- A13 삭제는 회원 잠금 → 매치 행 잠금 후 권한·시작 시각·모집 상태를 검사하고
+  CANCELLED로 전환한다. 취소 사유·시각과 status-changed Outbox를 같은 트랜잭션에 저장하며
+  매치·참가·대기 행은 보존한다(2026-11-02 계약 변경, 이슈 #104).
+  기존 하드 삭제용 저장소 메서드와 R8 CASCADE는 남아 있지만 외부 A13에서 호출하지 않는다.
 
 ## #11 참가·취소 담당
 
-- 하나의 `match_db` 트랜잭션에서 `MatchRepository.findByIdForUpdate`로 매치 행을
-  먼저 잠근다. 그 후 참가 중복·정원·시작 시각을 확인하고 참가 행과 모집 상태를 바꾼다.
+- 하나의 `match_db` 트랜잭션에서 회원 잠금 → 회원 I1 조회 → 매치 행 잠금 순서로 처리한다.
+  그 후 참가 중복·성별·정원·시작 시각을 확인하고 참가 행과 모집 상태를 바꾼다.
+  원격 회원 조회 중에는 매치 행 잠금을 보유하지 않는다.
 - 방장도 참가자 수에 포함한다. `(match_id,user_id)` 고유 제약이 중복 참가의 최종 방어선이다.
 - 참가 취소 후 첫 대기자를 승급할 때도 같은 매치 행 잠금 아래에서
   `findFirstByMatch_IdOrderByRegisteredAtAscIdAsc`로 조회하고, 대기 행 삭제·참가 행 삽입·

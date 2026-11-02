@@ -386,7 +386,7 @@ class MatchCrudTest {
     }
 
     @Test
-    void hardDeleteDeletesParticipantsThenCascadesWaitlistWithoutEvent() throws Exception {
+    void deleteCancelsPreservesRecordsAndNotifiesConfirmedParticipantsOnce() throws Exception {
         Long id = service.create(1L, request(3));
         participant(id, 2L);
         waitlist.saveAndFlush(new MatchWaitlistEntity(matches.findById(id).orElseThrow(), 3L));
@@ -394,11 +394,46 @@ class MatchCrudTest {
                 .andExpect(status().isForbidden());
         mvc.perform(delete("/api/matches/" + id).header("X-User-Id", "1"))
                 .andExpect(status().isNoContent());
-        assertThat(matches.existsById(id)).isFalse();
-        assertThat(participants.count()).isZero();
-        assertThat(waitlist.count()).isZero();
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM outbox_event", Integer.class))
-                .isZero();
+        var saved = matches.findById(id).orElseThrow();
+        assertThat(saved.getStatus()).isEqualTo(MatchStatus.CANCELLED);
+        assertThat(saved.getCancelledAt()).isNotNull();
+        assertThat(saved.getCancelReason()).isEqualTo("OWNER_DELETE");
+        assertThat(participants.countByMatch_Id(id)).isEqualTo(2);
+        assertThat(waitlist.count()).isEqualTo(1);
+        var event = mapper.readTree(jdbc.queryForObject(
+                "SELECT payload FROM outbox_event WHERE event_type='match.status-changed.v1'", String.class));
+        assertThat(event.path("matchId").asLong()).isEqualTo(id);
+        assertThat(event.path("ownerId").asLong()).isEqualTo(1L);
+        assertThat(event.path("from").asText()).isEqualTo("RECRUITING");
+        assertThat(event.path("to").asText()).isEqualTo("CANCELLED");
+        assertThat(event.path("participantIds").toString()).isEqualTo("[1,2]");
+        assertThat(event.path("reason").asText()).isEqualTo("방장 요청으로 모임 삭제");
+        mvc.perform(delete("/api/matches/" + id).header("X-User-Id", "1"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("MATCH_DELETE_NOT_ALLOWED"));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM outbox_event", Integer.class)).isEqualTo(1);
+    }
+
+    @Test
+    void deleteClosedMatchRollsBackCancellationIfOutboxFails() {
+        Long id = service.create(1L, request(2));
+        participant(id, 2L);
+        new TransactionTemplate(manager).executeWithoutResult(tx ->
+                matches.findById(id).orElseThrow().closeRecruitment(start.minusHours(1)));
+        jdbc.execute("ALTER TABLE outbox_event ADD CONSTRAINT reject_delete_event"
+                + " CHECK(event_type <> 'match.status-changed.v1')");
+        try {
+            assertThatThrownBy(() -> service.delete(id, 1L))
+                    .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+            var saved = matches.findById(id).orElseThrow();
+            assertThat(saved.getStatus()).isEqualTo(MatchStatus.CLOSED);
+            assertThat(saved.getCancelledAt()).isNull();
+            assertThat(participants.countByMatch_Id(id)).isEqualTo(2);
+        } finally {
+            jdbc.execute("ALTER TABLE outbox_event DROP CONSTRAINT reject_delete_event");
+        }
+        service.delete(id, 1L);
+        assertThat(matches.findById(id).orElseThrow().getStatus()).isEqualTo(MatchStatus.CANCELLED);
     }
 
     @Test

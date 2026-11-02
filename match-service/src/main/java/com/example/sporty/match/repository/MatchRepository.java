@@ -18,9 +18,9 @@ public interface MatchRepository extends JpaRepository<MatchEntity, Long>, JpaSp
     Optional<MatchEntity> findByIdForUpdate(@Param("matchId") Long matchId);
 
     /**
-     * Only for the pre-start hard-delete API. Delete participant rows first; the DB then cascades
-     * waitlist rows. Clear the persistence context so loaded waitlist entities cannot retain a
-     * reference to the deleted match.
+     * Retained for FK/RESTRICT and waitlist CASCADE persistence tests. External A13 uses cancellation
+     * and never calls this method. Delete participant rows first; the DB then cascades waitlist rows.
+     * Clear the persistence context so loaded waitlist entities cannot reference the deleted match.
      */
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query(value = "DELETE FROM matches WHERE id = :matchId", nativeQuery = true)

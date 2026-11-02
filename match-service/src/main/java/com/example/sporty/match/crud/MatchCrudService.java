@@ -208,9 +208,10 @@ public class MatchCrudService {
         if (!Set.of(MatchStatus.RECRUITING, MatchStatus.CLOSED).contains(match.getStatus())
                 || !match.getStartAt().isAfter(now()))
             throw problem(400, "MATCH_DELETE_NOT_ALLOWED", "시작 전 모집 중이거나 마감된 매치만 삭제할 수 있습니다.");
-        participants.deleteAllByMatch_Id(matchId);
-        participants.flush();
-        matches.deleteHardById(matchId); // R8 restricts participants and cascades waitlist rows.
+        var from = match.getStatus();
+        match.cancel("OWNER_DELETE", now());
+        events.statusChanged(match, from, "방장 요청으로 모임 삭제");
+        matches.flush();
     }
 
     @Transactional

@@ -17,7 +17,7 @@ def sql(statement):
     result = subprocess.run(
         ["docker", "exec", "-i", PROJECT + "-mariadb-1", "sh", "-c",
          'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" exec mariadb -uroot -BN --default-character-set=utf8mb4'],
-        input=statement, text=True, encoding="utf-8", capture_output=True, check=True,
+        input=statement, text=True, encoding="utf-8", stdout=subprocess.PIPE, check=True,
     )
     return result.stdout.strip()
 

@@ -21,7 +21,7 @@ spring:
   datasource:
     url: jdbc:mariadb://${MATCH_DB_HOST:localhost}:${MARIADB_HOST_PORT:3306}/match_db
     username: ${MATCH_DB_USERNAME:match_app}
-    password: ${MATCH_APP_PASSWORD}
+    password: ${MATCH_APP_PASSWORD:}
   jpa:
     hibernate:
       ddl-auto: ${MATCH_DB_DDL_AUTO:validate}

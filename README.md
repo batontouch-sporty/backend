@@ -25,7 +25,7 @@ docker compose up -d --build --wait         # 전체
 docker compose up -d mariadb redis kafka    # 인프라만
 ```
 
-호스트에 열리는 앱 포트는 Gateway 8000과 Config Server 8888이고 127.0.0.1에만 바인딩합니다. 기동 직후 약 1분은 Gateway가 503을 줄 수 있습니다.
+호스트에 열리는 앱 포트는 기본값 기준 Gateway 8000과 Config Server 8888이고(`.env`의 `GATEWAY_HOST_PORT`·`CONFIG_HOST_PORT`로 변경), 127.0.0.1에만 바인딩합니다. 기동 직후 약 1분은 Gateway가 503을 줄 수 있습니다.
 
 ### 설정과 IDE 실행
 

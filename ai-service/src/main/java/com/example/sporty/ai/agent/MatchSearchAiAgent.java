@@ -56,11 +56,9 @@ public class MatchSearchAiAgent {
                     .criteria(condition)
                     .fallback(fallback)
                     .build();
-        } catch (AiException e) {
-            // 400은 LLM이 정상 응답한 업무 오류라 success, 5xx만 error로 센다.
-            if (e.getStatus().is5xxServerError()) {
-                outcome = AiMetrics.OUTCOME_ERROR;
-            }
+        } catch (RuntimeException e) {
+            // 4xx 업무 거절은 rejected, 5xx와 예상 못 한 예외는 error. 성공률에 섞지 않는다.
+            outcome = AiMetrics.outcomeOf(e);
             throw e;
         } finally {
             metrics.record(AiMetrics.TYPE_SEARCH, outcome, start);

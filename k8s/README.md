@@ -1,6 +1,6 @@
-# Kubernetes 공통 기반, Discovery 및 tracing 초안
+# Sporty Kubernetes 매니페스트
 
-이 디렉터리는 Sporty_v2의 Kubernetes 공통 구조, `discovery-service` 배포와 HTTP 분산 추적 공통 기반을 시작하기 위한 초안이다. 현재 대상 클러스터와 이미지 레지스트리가 정해지지 않았으므로 정적 렌더링과 설정 연결 검토까지만 대상으로 한다. 실제 클러스터 적용과 전체 서비스 배포는 후속 작업이다.
+`sporty` 네임스페이스에서 Discovery, Config, Gateway, User, Match, Facility, AI, Notification과 Zipkin을 실행한다. MariaDB, Redis, Kafka는 별도 인프라 EC2의 Compose에서 실행한다. 로컬 렌더링과 클러스터 배포를 별도로 확인한다.
 
 ## 파일 구성
 
@@ -15,9 +15,12 @@
 | `zipkin-deployment.yaml` | 개발·시연용 메모리 저장 방식의 Zipkin 단일 인스턴스를 선언한다. |
 | `zipkin-service.yaml` | 같은 Namespace의 애플리케이션이 Zipkin에 접근할 `ClusterIP` Service를 선언한다. |
 | `kustomization.yaml` | 위 리소스를 함께 렌더링하고 배포 이미지 이름과 태그를 교체할 지점을 제공한다. |
-| `README.md` | 초안의 전제, 검증 범위, 이미지 준비 및 후속 배포 절차를 설명한다. |
+| `config-configmap.yaml` | Config Server의 prod 프로필, probe, Eureka URL과 저장소 상태 검사 설정이다. |
+| `app-client-configmap.yaml` | Gateway와 업무 서비스 5개에 prod 프로필, Config Server 및 Eureka URL, probe 설정을 제공한다. |
+| `{config,gateway,user,match,facility,ai,notification}-deployment.yaml` | 각 서비스 Pod의 이미지, 포트, probe, 자원 및 환경변수를 선언한다. |
+| `{config,gateway,user,match,facility,ai,notification}-service.yaml` | 각 앱을 같은 이름의 ClusterIP Service로 연결한다. |
 
-애플리케이션 Deployment는 현재 Discovery만 구현되어 있다. 이번 tracing 기반에는 공통 ConfigMap과 Zipkin 리소스만 포함하며, Gateway·User·Match·Facility·AI·Notification Deployment는 아래의 다음 단계에서 담당자와 설정을 맞춘 뒤 추가한다. Config, 데이터 저장소, Kafka, 나머지 도메인 서비스와 모니터링 매니페스트도 후속 범위다.
+Gateway는 API 포트 8000과 내부 관리 포트 8001을 구분한다. Config는 8888, User·Match·Facility·AI·Notification은 차례로 8081~8085를 사용한다. 외부 API 진입점을 구성할 때는 Gateway의 8000만 연결한다.
 
 ## 프로필과 설정
 
@@ -27,34 +30,11 @@ Discovery는 현재 애플리케이션 설정에서 포트 `8761`을 사용하�
 
 ### 공통 시간대
 
-`app-common-config`는 모든 Spring 애플리케이션이 같은 한국 시간 기준을 사용하도록 `TZ=Asia/Seoul`과 `JAVA_TOOL_OPTIONS=-Duser.timezone=Asia/Seoul`을 제공한다. 현재 존재하는 Spring Deployment인 Discovery가 이 ConfigMap을 `envFrom`으로 참조한다.
+`app-common-config`는 모든 Spring 애플리케이션이 같은 한국 시간 기준을 사용하도록 `TZ=Asia/Seoul`과 `JAVA_TOOL_OPTIONS=-Duser.timezone=Asia/Seoul`을 제공한다. Discovery와 신규 앱 7개의 Deployment가 모두 이 설정을 `envFrom`으로 참조한다. 서비스별 JVM 옵션을 추가할 때는 최종 옵션에 시간대가 포함되도록 한다.
 
-향후 User·Notification을 포함한 Spring 애플리케이션 Deployment를 추가할 때도 서비스 전용 ConfigMap보다 먼저 다음 공통 설정을 연결한다. 서비스별로 `JAVA_TOOL_OPTIONS`가 더 필요하면 `app-common-config` 값을 단순히 덮어쓰지 말고 `-Duser.timezone=Asia/Seoul`을 포함한 최종 옵션 문자열로 합쳐야 한다.
+## Discovery 배포 구성
 
-```yaml
-envFrom:
-  - configMapRef:
-      name: app-common-config
-  - configMapRef:
-      name: <service-specific-config>
-```
-
-User·Notification Deployment는 아직 이 디렉터리에 없으므로 이번 단계에서는 실제 연결하지 않는다. 두 Deployment가 추가되면 `k8s/app-common-configmap.yaml`의 `app-common-config`를 참조해야 한다.
-
-## 배포 구성
-
-- Namespace: `sporty`
-- Deployment / Service: `discovery-service`
-- replicas: `1`
-- Deployment 업데이트 전략: `Recreate`
-- Service 유형: `ClusterIP`
-- 컨테이너 / Service 포트: `8761`
-- 같은 Namespace의 접속 주소: `http://discovery-service:8761`
-- 클러스터 도메인이 기본값인 `cluster.local`일 때의 전체 DNS 주소 예시: `http://discovery-service.sporty.svc.cluster.local:8761`
-- 시작·생존 probe: `GET /actuator/health/liveness`
-- 준비 probe: `GET /actuator/health/readiness`
-
-사용자 정의 클러스터 도메인을 사용하면 전체 DNS 주소의 마지막 `cluster.local` 부분을 실제 클러스터 도메인에 맞춰야 한다.
+Discovery는 포트 8761의 ClusterIP Service로 연결한다. 같은 네임스페이스의 클라이언트는 `http://discovery-service:8761/eureka`를 사용한다. 시작·생존 probe는 `/actuator/health/liveness`, 준비 probe는 `/actuator/health/readiness`를 사용한다.
 
 ### 교체 전략과 가용성 제한
 
@@ -96,17 +76,7 @@ Compose의 애플리케이션은 `http://zipkin:9411/api/v2/spans`로 span을 �
 - `MANAGEMENT_TRACING_SAMPLING_PROBABILITY`: 추적 sampling 비율
 - `MANAGEMENT_OBSERVATIONS_ENABLE_TASKS`: scheduled task observation 활성화 여부
 
-향후 Gateway·User·Match·Facility·AI·Notification Deployment를 추가할 때 각 서비스 전용 ConfigMap과 함께 다음과 같이 주입한다.
-
-```yaml
-envFrom:
-  - configMapRef:
-      name: <service-specific-config>
-  - configMapRef:
-      name: tracing-config
-```
-
-현재 Kubernetes 디렉터리에는 애플리케이션 중 Discovery Deployment만 있으며, Discovery는 이번 tracing 적용 대상이 아니다. 따라서 Discovery ConfigMap과 Deployment에는 `tracing-config`를 연결하지 않았다. 위 여섯 서비스에 대한 실제 `envFrom` 연결은 각 Deployment를 추가할 때 수행해야 한다.
+Gateway·User·Match·Facility·AI·Notification이 `app-common-config`, `app-client-config`, `tracing-config`를 참조한다. Discovery와 Config에는 추적 설정을 주입하지 않는다.
 
 sampling probability `1.0`은 모든 호출을 확인하기 위한 개발·시연 기준이다. 운영 환경에서는 트래픽 양과 저장 비용을 측정한 뒤 더 낮은 값으로 조정할 수 있다. `MANAGEMENT_OBSERVATIONS_ENABLE_TASKS=false`는 Scheduled Task 기능 자체를 끄는 설정이 아니라, Scheduled Task Observation과 그에 따른 span 생성을 줄이기 위한 설정이다.
 
@@ -126,7 +96,7 @@ kustomize build k8s
 
 ## 이미지 준비
 
-초안의 `sporty-discovery-service:k8s-draft`는 유효한 이미지 참조 형식을 맞추기 위해 정한 이름일 뿐, 이미지가 이미 빌드되었거나 레지스트리에 업로드되었다는 뜻이 아니다. 실제 적용 전에 대상 Kubernetes 노드가 이미지를 사용할 수 있도록 준비해야 한다.
+현재 앱 이미지의 `k8s-draft` 태그는 로컬 렌더링용이다. 배포 전 Discovery를 포함한 앱 8개의 이미지를 팀 Docker Hub에 push하고 `kustomization.yaml`의 각 `images.newName`과 `newTag`에 실제 저장소·커밋 태그를 넣는다. 워커 아키텍처와 이미지 플랫폼이 일치해야 한다. 비공개 이미지는 워커가 pull할 수 있도록 `sporty` 네임스페이스에 풀 자격 증명을 구성한다.
 
 기존 Dockerfile은 backend 저장소 루트를 build context로 사용한다. 저장소 루트에서 실행할 빌드 명령 예시는 다음과 같다. 이 명령은 문서 예시이며 이번 초안 작업에서는 실행하지 않았다.
 
@@ -144,6 +114,20 @@ Mac에서 만든 로컬 이미지는 별도 VM의 Kubernetes 노드로 자동 �
 - 폐쇄 환경이면 검증된 별도 전달 절차로 각 노드의 컨테이너 런타임에 적재한다.
 
 이미지 저장소, 태그 정책, 노드 아키텍처(`amd64`/`arm64` 등), 단일 또는 다중 아키텍처 빌드 여부와 전달 방식을 배포 환경에 맞춰 확정해야 한다. 현재 `imagePullPolicy: IfNotPresent`이므로 같은 이름과 태그의 오래된 로컬 이미지가 남지 않도록 불변 태그 사용을 권장한다.
+
+## 배포 환경별 입력
+
+실제 값은 `sporty` 네임스페이스에 별도로 준비한다. Git에 비밀번호를 넣지 않는다.
+
+| 리소스 | 필요한 키 | 용도 |
+| --- | --- | --- |
+| ConfigMap `sporty-infra-endpoints` | `MARIADB_HOST`, `REDIS_HOST`, `KAFKA_BOOTSTRAP_SERVERS`, `PROMETHEUS_URL` | Pod에서 접근 가능한 주소. Kafka는 host:port, Prometheus는 스킴과 포트를 포함한 URL이다. |
+| 같은 ConfigMap의 선택 키 | `MARIADB_HOST_PORT`, `REDIS_HOST_PORT`, `CORS_ALLOWED_ORIGIN` | DB와 Redis의 기본 포트는 3306, 6379다. 프론트를 다른 출처에 배포하면 실제 origin을 지정한다. |
+| Secret `sporty-jwt` | `JWT_SECRET_KEY` | Gateway와 User가 같은 서명 키를 사용한다. |
+| Secret `user-service-secret`, `match-service-secret`, `facility-service-secret`, `notification-service-secret` | 각각 `USER_APP_PASSWORD`, `MATCH_APP_PASSWORD`, `FACILITY_APP_PASSWORD`, `NOTIFICATION_APP_PASSWORD` | 인프라 MariaDB의 서비스별 계정과 일치해야 한다. 기존 DB 초기화 스크립트를 기준으로 스키마와 권한을 준비한다. |
+| 선택 키 | Facility Secret의 `PUBLIC_DATA_API_KEY`, AI Secret `ai-service-secret`의 `OPENAI_API_KEY` | 키가 필요한 외부 기능용이다. 시연용 관리자 계정이 필요하면 User Secret에 `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NICKNAME`을 추가한다. |
+
+로컬 Compose의 호스트 바인딩과 Kafka advertised listener를 인프라 EC2의 사설 네트워크에 맞춘다. Kafka가 알려주는 브로커 주소에도 워커 Pod에서 접근할 수 있어야 한다. `PROMETHEUS_URL`은 Gateway가 관리자 쿼리를 보낼 주소다. 인프라 EC2에서 앱 메트릭을 수집할 경로 및 타깃은 별도로 구성한다.
 
 ## 실제 배포 전 확인 사항
 
@@ -187,11 +171,19 @@ curl -fsS http://127.0.0.1:8761/actuator/health/readiness
 
 Eureka 화면은 브라우저에서 `http://127.0.0.1:8761/`로 확인한다. 렌더링 성공은 실제 이미지 pull, 애플리케이션 기동, probe 성공 또는 Pod Ready를 보장하지 않는다.
 
-## 다음 단계
+## 신규 앱 배포 확인
 
-1. **Config·Gateway 연결**: Config 및 Gateway 담당자와 배포 순서, `CONFIG_SERVER_URL`, `EUREKA_URL`, Gateway route와 내부 Service 이름을 맞춘다.
-2. **DB·Redis·Kafka 배포**: 공통 인프라 담당자와 영속 볼륨, StorageClass, Secret 관리, 백업, Kafka listener·bootstrap 주소와 노출 방식을 확정한다. 각 데이터 저장소를 실제로 쓰는 서비스 담당자와 자원 요구량도 맞춘다.
-3. **도메인 서비스 등록·통신 검증**: 각 서비스 담당자와 이미지·포트·환경변수·probe·자원값을 확정하고, Eureka 등록과 Gateway/Feign 통신을 순서대로 검증한다.
-4. **모니터링 연결**: 모니터링 담당자와 Prometheus service discovery, scrape 대상, actuator 노출 범위, Grafana dashboard와 Alertmanager 알림 경로를 맞춘다.
+1. `kubectl -n sporty get deploy,pods,svc`로 신규 앱 7개의 rollout과 Ready 상태를 확인한다.
+2. `kubectl -n sporty port-forward svc/config-service 18888:8888`을 실행하고 다른 터미널에서 `curl -fsS http://127.0.0.1:18888/gateway-service/prod/main`을 호출한다. 응답의 프로필, Git 버전 및 propertySources에 prod 설정이 있는지 확인한다.
+3. `kubectl -n sporty port-forward svc/gateway-service 18000:8000`을 실행한다. Eureka 등록 후 다른 터미널에서 다섯 서비스의 실제 응답 코드를 확인한다.
+
+```bash
+for svc in user match facility ai notification; do
+  curl -fsS --max-time 5 -o /dev/null -w "${svc}-service HTTP %{http_code}\n" \
+    "http://127.0.0.1:18000/${svc}-service/actuator/health" || break
+done
+```
+
+4. `kubectl -n sporty exec deploy/match-service -- printenv MATCH_WITHDRAWAL_ENABLED`가 `true`인지 확인한다. 테스트 계정의 탈퇴 요청에 대해 동일한 Saga가 `CLEANED` 또는 정상적인 거절 사유가 있는 `REJECTED`로 끝나는지 확인한다. HTTP 202는 접수 결과다.
 
 각 단계에서는 담당 서비스의 API 및 Kafka 이벤트 계약을 변경하지 않고, 필요한 환경 설정과 운영 전제만 별도 합의한다.

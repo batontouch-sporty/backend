@@ -1,0 +1,92 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway-service
+  namespace: sporty
+  labels:
+    app.kubernetes.io/name: gateway-service
+    app.kubernetes.io/component: gateway
+    app.kubernetes.io/part-of: sporty
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: gateway-service
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: gateway-service
+        app.kubernetes.io/component: gateway
+        app.kubernetes.io/part-of: sporty
+    spec:
+      containers:
+        - name: gateway-service
+          image: sporty-gateway-service:k8s-draft
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+            - name: management
+              containerPort: 8001
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: app-common-config
+            - configMapRef:
+                name: app-client-config
+            - configMapRef:
+                name: tracing-config
+          env:
+            - name: JWT_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sporty-jwt
+                  key: JWT_SECRET_KEY
+            - name: PROMETHEUS_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: sporty-infra-endpoints
+                  key: PROMETHEUS_URL
+            - name: CORS_ALLOWED_ORIGIN
+              valueFrom:
+                configMapKeyRef:
+                  name: sporty-infra-endpoints
+                  key: CORS_ALLOWED_ORIGIN
+                  optional: true
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: management
+              scheme: HTTP
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 24
+            successThreshold: 1
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: management
+              scheme: HTTP
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+            successThreshold: 1
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: management
+              scheme: HTTP
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+            successThreshold: 1
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      terminationGracePeriodSeconds: 30

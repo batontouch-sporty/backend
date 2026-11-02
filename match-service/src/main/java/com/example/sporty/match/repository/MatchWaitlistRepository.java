@@ -22,6 +22,8 @@ public interface MatchWaitlistRepository extends JpaRepository<MatchWaitlistEnti
 
     List<MatchWaitlistEntity> findAllByUserId(Long userId);
 
+    List<MatchWaitlistEntity> findAllByUserIdAndRegisteredAtLessThanEqual(Long userId,Instant registeredAt);
+
     boolean existsByMatch_IdAndUserId(Long matchId, Long userId);
 
     @Query(

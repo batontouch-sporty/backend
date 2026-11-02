@@ -27,7 +27,7 @@
 - 수신 `user.deposit-charged.v1`: 차감 성공 후 매치·요청 잠금 안에서 상태·마감·정원을 다시 확인한다.
 - 수신 `user.deposit-charge-rejected.v1`: reason INSUFFICIENT_POINTS/PARTICIPATION_SUSPENDED/REQUEST_CANCELLED/USER_NOT_ACTIVE. 실패 요청은 확정하지 않는다.
 - 수신 `user.deposit-refund-completed.v1`: outcome RETURNED/CANCELLED_BEFORE_CHARGE, creditedPoints(0~10 정수). 차감 전 취소는 0.
-- 수신 `user.participation-suspended.v1`: suspendedUntil(오프셋 포함). 기존 대기 등록만 삭제한다. 확정 참가·방장 매치는 유지한다.
+- 수신 `user.participation-suspended.v1`: 공통 eventId·requestId·userId·matchId·occurredAt 모두 필수이며, requestId·matchId는 정지 원인이 된 노쇼 정산 건이다. 추가 필드 suspendedUntil은 오프셋을 포함한다. occurredAt까지 등록된 대기만 삭제하며, 정지 이벤트 지연/DLT 재처리 시 그 이후의 새 대기 등록과 기존 확정 참가·방장 매치는 유지한다.
 - 매칭 A용 `match.attendance-settlement-requested.v1`도 공통 Outbox 발행 허용 목록에 포함했다. 확정 요청별 정산 이벤트 생성 로직은 매칭 A에서 연결한다.
 - 결과 소비 groupId `match-deposit-v1`. 실패 시 1초 간격 3회 재시도 후 `<원본 토픽>.DLT`. DLT 발행 실패는 소비 완료로 처리하지 않는다.
 - 기존 참가·상태·승급·리마인더 알림 이벤트 계약과 key(matchId)는 유지한다. 새 보증금 이벤트만 userId key를 사용한다.

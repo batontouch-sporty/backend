@@ -223,6 +223,22 @@ class DepositSagaTest {
         saga.handle("user.participation-suspended.v1",event);
         assertThat(waitlist.findAllByUserId(3L)).isEmpty(); assertThat(participants.countByMatch_Id(m)).isEqualTo(2);
     }
+    @Test void delayedSuspensionDoesNotDeleteWaitingRegisteredAfterSuspensionExpired() {
+        long first=ready(2); participation.join(first,2L); charged(id(first,2)); waiting.register(first,3L);
+        long second=ready(2); participation.join(second,2L); charged(id(second,2)); waiting.register(second,3L);
+        var occurredAt=OffsetDateTime.now(ZoneOffset.UTC).minusDays(8);
+        // One entry existed when suspension happened, the other is a fresh post-expiry entry.
+        jdbc.update("UPDATE match_waitlist SET registered_at=TIMESTAMPADD(DAY,-9,registered_at) WHERE match_id=? AND user_id=3",first);
+        var event=mapper.createObjectNode().put("eventId",UUID.randomUUID().toString()).put("requestId",UUID.randomUUID().toString())
+                .put("userId",3).put("matchId",first).put("occurredAt",occurredAt.toString())
+                .put("suspendedUntil",occurredAt.plusDays(7).toString());
+        saga.handle("user.participation-suspended.v1",event);
+        saga.handle("user.participation-suspended.v1",event);
+        assertThat(waitlist.existsByMatch_IdAndUserId(first,3L)).isFalse();
+        assertThat(waitlist.existsByMatch_IdAndUserId(second,3L)).isTrue();
+        assertThat(participants.countByMatch_Id(first)).isEqualTo(2);
+        assertThat(participants.countByMatch_Id(second)).isEqualTo(2);
+    }
     @Test void requestStatusIsPrivateAndUnauthenticatedRequestsAreRejected() throws Exception {
         long m=create(2); String id=id(m,1);
         mvc.perform(get("/api/matches/requests/"+id)).andExpect(status().isUnauthorized());

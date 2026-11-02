@@ -108,13 +108,14 @@ public class DepositSaga {
         String eventId=text(event,"eventId"), requestId=text(event,"requestId");
         UUID.fromString(eventId); UUID.fromString(requestId);
         long userId=positive(event,"userId"), matchId=positive(event,"matchId");
-        OffsetDateTime.parse(text(event,"occurredAt"));
+        var occurredAt=OffsetDateTime.parse(text(event,"occurredAt")).toInstant();
         locks.lock(userId);
         if(store.processed(eventId)) return;
         if("user.participation-suspended.v1".equals(topic)) {
             OffsetDateTime.parse(text(event,"suspendedUntil"));
             // Suspension leaves already confirmed matches intact.
-            waitlist.deleteAll(waitlist.findAllByUserId(userId)); waitlist.flush();
+            // A delayed suspension or DLT redrive must not delete registrations made after it.
+            waitlist.deleteAll(waitlist.findAllByUserIdAndRegisteredAtLessThanEqual(userId,occurredAt)); waitlist.flush();
             store.mark(eventId,topic); return;
         }
         var initial=store.get(requestId);

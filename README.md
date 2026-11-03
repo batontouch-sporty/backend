@@ -63,7 +63,7 @@ curl -i -X POST http://localhost:8888/actuator/busrefresh
 docker compose exec user-service curl -s localhost:8081/actuator/loggers/com.example.sporty
 ```
 
-되돌릴 때는 줄을 지우지 말고 `INFO`로 바꿔 다시 새로고침합니다. 지운 키는 이전 레벨이 그대로 남습니다.
+되돌릴 때는 `INFO`로 바꿔 다시 새로고침합니다. 서비스 로그에는 `Keys refreshed [logging.level.com.example.sporty]`가 남습니다.
 
 ## Zipkin 로컬 실행
 

@@ -1,0 +1,122 @@
+# infra EC2의 Prometheus가 /actuator/prometheus를 긁을 관리 포트 NodePort.
+# 보안 그룹에서 30100~30199는 infra EC2 사설 IP만 허용한다. 외부에 열지 않는다.
+# Gateway는 관리 포트 8001이 따로 있고, 업무 서비스는 관리 포트가 서비스 포트와 같다.
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway-metrics
+  namespace: sporty
+  labels:
+    app.kubernetes.io/name: gateway-service
+    app.kubernetes.io/component: metrics
+    app.kubernetes.io/part-of: sporty
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: gateway-service
+  ports:
+    - name: management
+      port: 8001
+      targetPort: management
+      nodePort: 30101
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-metrics
+  namespace: sporty
+  labels:
+    app.kubernetes.io/name: user-service
+    app.kubernetes.io/component: metrics
+    app.kubernetes.io/part-of: sporty
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: user-service
+  ports:
+    - name: management
+      port: 8081
+      targetPort: http
+      nodePort: 30181
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: match-metrics
+  namespace: sporty
+  labels:
+    app.kubernetes.io/name: match-service
+    app.kubernetes.io/component: metrics
+    app.kubernetes.io/part-of: sporty
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: match-service
+  ports:
+    - name: management
+      port: 8082
+      targetPort: http
+      nodePort: 30182
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: facility-metrics
+  namespace: sporty
+  labels:
+    app.kubernetes.io/name: facility-service
+    app.kubernetes.io/component: metrics
+    app.kubernetes.io/part-of: sporty
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: facility-service
+  ports:
+    - name: management
+      port: 8083
+      targetPort: http
+      nodePort: 30183
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-metrics
+  namespace: sporty
+  labels:
+    app.kubernetes.io/name: ai-service
+    app.kubernetes.io/component: metrics
+    app.kubernetes.io/part-of: sporty
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: ai-service
+  ports:
+    - name: management
+      port: 8084
+      targetPort: http
+      nodePort: 30184
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: notification-metrics
+  namespace: sporty
+  labels:
+    app.kubernetes.io/name: notification-service
+    app.kubernetes.io/component: metrics
+    app.kubernetes.io/part-of: sporty
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: notification-service
+  ports:
+    - name: management
+      port: 8085
+      targetPort: http
+      nodePort: 30185
+      protocol: TCP

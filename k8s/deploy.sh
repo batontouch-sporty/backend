@@ -28,6 +28,9 @@ SECRETS=(sporty-jwt sporty-rabbitmq user-service-secret match-service-secret fac
 
 echo "대상 클러스터: $(kubectl config current-context)"
 
+# Secret에 키가 있고 값이 비어 있지 않은지 본다. 값은 출력하지 않는다. 키에 점이 있으면 \. 로 넘긴다.
+has_key() { [ -n "$(kubectl -n "$NS" get secret "$1" -o "jsonpath={.data.$2}")" ]; }
+
 # Deployment가 참조하는 ConfigMap·Secret이 먼저 있어야 Pod가 뜬다.
 missing=0
 if ! kubectl get namespace "$NS" >/dev/null 2>&1; then
@@ -47,6 +50,19 @@ for s in "${SECRETS[@]}"; do
     missing=1
   fi
 done
+# sporty-rabbitmq는 7개 Deployment가 필수로 읽는다. 키가 빠지면 Pod가 CreateContainerConfigError로 멈춘다.
+if kubectl -n "$NS" get secret sporty-rabbitmq >/dev/null 2>&1; then
+  for k in RABBITMQ_USER RABBITMQ_PASSWORD; do
+    has_key sporty-rabbitmq "$k" || { echo "[없음] Secret sporty-rabbitmq 의 $k" >&2; missing=1; }
+  done
+fi
+# 키스토어는 선택이지만, 만들었다면 키가 모두 있어야 한다. 하나라도 빠지면 config-service가 조용히 암호화 없이 뜨거나 기동에 실패한다.
+if kubectl -n "$NS" get secret config-encrypt-keystore >/dev/null 2>&1; then
+  has_key config-encrypt-keystore 'config\.jks' || { echo "[없음] Secret config-encrypt-keystore 의 config.jks" >&2; missing=1; }
+  for k in ENCRYPT_KEYSTORE_LOCATION ENCRYPT_KEYSTORE_PASSWORD ENCRYPT_KEYSTORE_ALIAS; do
+    has_key config-encrypt-keystore "$k" || { echo "[없음] Secret config-encrypt-keystore 의 $k" >&2; missing=1; }
+  done
+fi
 if [ "$missing" -ne 0 ]; then
   echo "[멈춤] 위 리소스를 k8s/README.md 'AWS 배포 절차' 2단계대로 만든 뒤 다시 실행한다." >&2
   exit 1

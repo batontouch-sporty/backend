@@ -12,6 +12,8 @@ on:
       - build.gradle
       - settings.gradle
       - 'gradle/**'
+      - gradlew
+      - .dockerignore
   workflow_dispatch:
 
 permissions:

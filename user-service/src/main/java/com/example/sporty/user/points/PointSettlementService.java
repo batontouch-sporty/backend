@@ -25,7 +25,9 @@ public class PointSettlementService {
     public enum Action { CHARGE, REFUND, ATTENDED, NO_SHOW, UNDER_MIN_PARTICIPANTS }
     public enum Outcome {
         CHARGED, INSUFFICIENT_POINTS, PARTICIPATION_SUSPENDED, USER_NOT_ACTIVE, REQUEST_CANCELLED,
-        RETURNED, CANCELLED_BEFORE_CHARGE, FORFEITED, ALREADY_SETTLED, DUPLICATE, WITHDRAWN
+        RETURNED, CANCELLED_BEFORE_CHARGE, FORFEITED, ALREADY_SETTLED, DUPLICATE, WITHDRAWN,
+        // 확정 차감 이력이 없는 출석 정산(보증금 기능이 꺼져 있을 때 확정된 참가). 처리 완료로 기록만 한다.
+        NO_CHARGE_RECORD
     }
 
     public record Result(Outcome outcome, int creditedPoints, LocalDateTime newSuspension) {
@@ -83,7 +85,7 @@ public class PointSettlementService {
             return Result.of(Outcome.ALREADY_SETTLED);
         }
         if (!reasons.contains(DEPOSIT_CHARGED)) {
-            if (cmd.action() != Action.REFUND) throw new IllegalStateException("확정 보증금 없이 출석 정산할 수 없습니다.");
+            if (cmd.action() != Action.REFUND) return Result.of(Outcome.NO_CHARGE_RECORD);
             change(user, cmd, DEPOSIT_CANCELLED, 0, now);
             return Result.of(Outcome.CANCELLED_BEFORE_CHARGE);
         }
@@ -131,8 +133,11 @@ public class PointSettlementService {
         return after - before;
     }
 
+    // 조회 경로에서도 부르므로 해제할 때가 된 회원만 잠근다.
     public void expireIfDue(long userId) {
-        users.findForUpdate(userId).ifPresent(user -> expire(user, now()));
+        LocalDateTime now = now();
+        if (!users.existsByIdAndSuspendedUntilLessThanEqual(userId, now)) return;
+        users.findForUpdate(userId).ifPresent(user -> expire(user, now));
     }
 
     private void expire(UserEntity user, LocalDateTime now) {

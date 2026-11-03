@@ -9,6 +9,7 @@ import com.example.sporty.user.users.domain.entity.UserEntity;
 import com.example.sporty.user.users.repository.UserRepository;
 import com.example.sporty.user.withdrawal.domain.entity.OutboxEventEntity;
 import com.example.sporty.user.withdrawal.repository.OutboxEventRepository;
+import com.example.sporty.user.withdrawal.repository.ProcessedEventRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.LocalDateTime;
@@ -28,6 +29,7 @@ class DepositEventConsumerTest {
     @Autowired UserRepository users;
     @Autowired OutboxEventRepository outbox;
     @Autowired ObjectMapper json;
+    @Autowired ProcessedEventRepository processed;
 
     private long member(int balance) {
         return users.saveAndFlush(UserEntity.builder().email(UUID.randomUUID() + "@x.test")
@@ -151,15 +153,23 @@ class DepositEventConsumerTest {
         assertThat(balance(uid)).isEqualTo(40);
     }
 
-    // 재시도해도 같은 결과인 실패는 IllegalArgumentException(비재시도 → 바로 DLT)으로 나간다.
+    // 없는 회원은 재시도해도 같으므로 IllegalArgumentException(비재시도 → 바로 DLT)으로 나간다.
     @Test
-    void unknownMemberAndAttendanceWithoutChargeAreNotRetryable() {
+    void unknownMemberIsNotRetryable() {
         assertThatThrownBy(() -> charge(Long.MAX_VALUE, UUID.randomUUID()))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    // 보증금 기능이 꺼져 있을 때 확정된 참가의 출석 정산: DLT 없이 처리 완료로 기록하고 발행하지 않는다.
+    @Test
+    void attendanceWithoutChargeIsRecordedWithoutEvent() throws Exception {
         long uid = member(50);
-        assertThatThrownBy(() -> attendance(uid, UUID.randomUUID(), "ATTENDED"))
-                .isInstanceOf(IllegalArgumentException.class);
+        String eventId = UUID.randomUUID().toString();
+        send(ATTENDANCE_REQUESTED, eventId, uid, UUID.randomUUID(), "\"result\":\"ATTENDED\"");
+        assertThat(processed.existsById(eventId)).isTrue();
+        assertThat(eventCount(uid)).isZero();
         assertThat(balance(uid)).isEqualTo(50);
+        assertThat(users.findById(uid).orElseThrow().getAttendanceRewardCount()).isZero();
     }
 
     @Test

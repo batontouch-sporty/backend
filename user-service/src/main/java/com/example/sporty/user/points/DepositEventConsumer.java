@@ -27,7 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * 매칭의 보증금·출석 정산 요청을 받아 포인트를 정산하고, 결과 이벤트를 같은 트랜잭션에 Outbox로 남긴다.
  * 발행은 탈퇴 Saga와 같은 WithdrawalOutboxRelay가 한다. 같은 eventId는 PointSettlementService가 processed_events로 거른다.
- * 필수 값 누락·알 수 없는 값·없는 회원·차감 이력 없는 출석 정산은 IllegalArgumentException으로 재시도 없이 "<원본 토픽>.DLT"로 간다(WithdrawalSagaConfig).
+ * 필수 값 누락·알 수 없는 값·없는 회원은 IllegalArgumentException으로 재시도 없이 "<원본 토픽>.DLT"로 간다(WithdrawalSagaConfig).
  */
 @Slf4j
 @Component
@@ -75,8 +75,8 @@ public class DepositEventConsumer {
         Result result;
         try {
             result = points.apply(cmd);
-        } catch (UserNotFoundException | IllegalStateException e) {
-            // 없는 회원·차감 이력 없는 출석 정산은 다시 해도 같다. IllegalArgumentException으로 바꿔 바로 DLT로 보낸다.
+        } catch (UserNotFoundException e) {
+            // 없는 회원은 다시 해도 같다. IllegalArgumentException으로 바꿔 바로 DLT로 보낸다.
             throw new IllegalArgumentException(e.getMessage(), e);
         }
         log.info("포인트 정산: topic={}, requestId={}, userId={}, outcome={}",
@@ -107,6 +107,8 @@ public class DepositEventConsumer {
                     publish(REFUND_COMPLETED, cmd, Map.of("outcome", "RETURNED", "creditedPoints", 0));
                 }
             }
+            case NO_CHARGE_RECORD -> log.warn("차감 이력 없는 출석 정산, 처리 완료로 기록: requestId={}, userId={}",
+                    cmd.requestId(), cmd.userId());
             // DUPLICATE는 처음 처리 때 이미 남겼다.
             case DUPLICATE -> { }
         }

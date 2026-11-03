@@ -104,7 +104,9 @@ class MatchLifecycleTest {
         long m=match(3,now.minusMinutes(1),now.plusHours(1),2L);
         joinPending(m,3L);   // PENDING request is not a recipient
         clearOutbox();
-        assertThat(lifecycle.candidates()).containsExactly(m);
+        assertThat(lifecycle.candidates(0)).containsExactly(m);
+        assertThat(lifecycle.candidates(m)).isEmpty();
+        assertThat(lifecycle.candidates(m-1)).containsExactly(m);
         lifecycle.advance(m);
         assertThat(state(m)).isEqualTo(MatchStatus.IN_PROGRESS);
         var e=statusChanges(); assertThat(e).hasSize(1);
@@ -163,7 +165,7 @@ class MatchLifecycleTest {
         lifecycle.advance(m); lifecycle.advance(m);
         assertThat(statusChanges()).filteredOn(n->n.path("to").asText().equals("COMPLETED")).hasSize(1);
         assertThat(outbox(MatchLifecycle.SETTLEMENT)).hasSize(2);
-        assertThat(lifecycle.candidates()).doesNotContain(m);
+        assertThat(lifecycle.candidates(0)).doesNotContain(m);
         // Even a forced second completion pass cannot insert another request for the same participant.
         jdbc.update("UPDATE matches SET status='IN_PROGRESS' WHERE id=?",m);
         lifecycle.advance(m);
@@ -186,7 +188,7 @@ class MatchLifecycleTest {
         jdbc.update("UPDATE matches SET start_at=?,end_at=? WHERE id=?",now.minusHours(3),now.minusHours(1),cancelled);
         long future=match(3,now.plusHours(1),now.plusHours(2),2L);
         clearOutbox();
-        assertThat(lifecycle.candidates()).isEmpty();
+        assertThat(lifecycle.candidates(0)).isEmpty();
         lifecycle.advance(pending); lifecycle.advance(cancelled); lifecycle.advance(future);
         assertThat(state(pending)).isEqualTo(MatchStatus.CREATION_PENDING);
         assertThat(state(cancelled)).isEqualTo(MatchStatus.CANCELLED);

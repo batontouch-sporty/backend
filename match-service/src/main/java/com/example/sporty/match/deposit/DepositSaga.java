@@ -18,7 +18,6 @@ public class DepositSaga {
     private final MatchRepository matches;
     private final MatchParticipantRepository participants;
     private final MatchWaitlistRepository waitlist;
-    private final MatchRemoteChecks checks;
     private final ParticipationEvents events;
     private final MemberLocks locks;
     private final Duration timeout;
@@ -28,12 +27,12 @@ public class DepositSaga {
 
     public DepositSaga(DepositStore store, MatchRepository matches,
             MatchParticipantRepository participants, MatchWaitlistRepository waitlist,
-            MatchRemoteChecks checks, ParticipationEvents events,
+            ParticipationEvents events,
             @Qualifier("participationMemberLocks") MemberLocks locks,
             @Value("${match.deposit.timeout:5m}") Duration timeout,
             @Value("${match.deposit.enabled:true}") boolean enabled,DepositPriority priority) {
         this.store=store; this.matches=matches; this.participants=participants; this.waitlist=waitlist;
-        this.checks=checks; this.events=events; this.locks=locks; this.timeout=timeout; this.enabled=enabled;
+        this.events=events; this.locks=locks; this.timeout=timeout; this.enabled=enabled;
         this.priority=priority;
         if(timeout.isNegative()||timeout.isZero()) throw new IllegalArgumentException("Deposit timeout must be positive");
     }
@@ -84,7 +83,7 @@ public class DepositSaga {
         }
         if(!Set.of("PENDING","CONFIRMED").contains(r.status)) return;
         r.status="CANCELLED";
-        r.failureCode="CONFIRMATION_FAILED".equals(reason)?"CONFIRMATION_FAILED":null;
+        r.failureCode=reason; // PARTICIPANT_CANCELLED / MATCH_CANCELLED / CONFIRMATION_FAILED
         store.refund(r,reason); store.save(r); p.cancelParticipation();
         if("CREATE".equals(r.requestType)) p.getMatch().failCreation(now());
     }
@@ -130,15 +129,8 @@ public class DepositSaga {
         var initial=store.get(requestId);
         if(initial==null || initial.userId!=userId || initial.matchId!=matchId)
             throw new IllegalArgumentException("Unknown or mismatched deposit request");
-        // Same member -> match ordering as create/join/withdrawal. Remote checks precede row lock.
-        String refusal=null;
-        if("user.deposit-charged.v1".equals(topic) && "PENDING".equals(initial.status)) {
-            try { checks.activeMember(userId); }
-            catch(MatchDependencyException e) {
-                if(e.status()>=500) throw e;
-                refusal=e.code();
-            }
-        }
+        // Same member -> match ordering as create/join/withdrawal. user-service already checked
+        // member state and suspension under its member row lock before charging, so no I1 call here.
         var match=matches.findByIdForUpdate(matchId).orElseThrow();
         var r=store.locked(requestId);
         var p=participants.findRequestForUpdate(matchId,userId).orElseThrow();
@@ -149,7 +141,13 @@ public class DepositSaga {
                 if("CONFIRMED".equals(r.status)) break;
                 boolean creation="CREATE".equals(r.requestType);
                 boolean waitlistFirst="JOIN".equals(r.requestType) && priority.hasPriority(matchId);
-                boolean allowed="PENDING".equals(r.status) && current && refusal==null
+                if(!"PENDING".equals(r.status)) {
+                    // Already closed (participant/match cancel, timeout, withdrawal, rejection):
+                    // keep its status and reason, only record the refund for the late charge.
+                    if(!"USER_WITHDRAWN".equals(r.failureCode)) store.refund(r,"CONFIRMATION_FAILED");
+                    break;
+                }
+                boolean allowed=current
                         && !waitlistFirst
                         && OffsetDateTime.now(ZoneOffset.UTC).isBefore(r.deadlineAt)
                         && match.getStartAt().isAfter(now())
@@ -168,8 +166,7 @@ public class DepositSaga {
                 } else {
                     r.status="CANCELLED";
                     if(r.failureCode==null) {
-                        if(refusal!=null) r.failureCode=refusal;
-                        else if(waitlistFirst) r.failureCode="MATCH_RECRUITMENT_CLOSED";
+                        if(waitlistFirst) r.failureCode="MATCH_RECRUITMENT_CLOSED";
                         else if(!match.getStartAt().isAfter(now())) r.failureCode="MATCH_ALREADY_STARTED";
                         else if(participants.findConfirmedForUpdate(matchId).size()>=match.getMaxParticipant()) r.failureCode="MATCH_FULL";
                         else r.failureCode="CONFIRMATION_FAILED";

@@ -14,7 +14,7 @@
 - `GET /api/matches/requests/{requestId}`: 본인의 현재 참가 행에 연결된 요청만 200. 잘못된 UUID는 400 INVALID_INPUT, 없는 요청·다른 회원·재신청으로 교체된 요청은 404 PARTICIPATION_REQUEST_NOT_FOUND, 미인증은 401. 이전 요청의 Outbox와 보상 처리는 계속 보존한다.
 - 상태 응답: requestId, matchId, requestType(CREATE/JOIN/PROMOTION), status(PENDING/CONFIRMED/FAILED/CANCELLED), refundStatus(NOT_REQUIRED/PENDING/COMPLETED), failureCode, failureMessage.
 - A15: 시작 전 취소만 204. CANCELLED 변경과 반환 Outbox를 같은 트랜잭션으로 저장한다. 반환 완료를 기다리지 않는다. 시작 후 400 MATCH_ALREADY_STARTED.
-- A13/A17: 취소 알림 대상을 먼저 확정하고, PENDING/CONFIRMED 요청별 MATCH_CANCELLED 반환을 기록한다.
+- A13/A17: 취소 알림 대상을 먼저 확정하고, PENDING/CONFIRMED 요청별 MATCH_CANCELLED 반환을 기록한다. 매치 취소(A13·A17·방장 탈퇴)는 확정 참가 행을 CONFIRMED로 남겨 내 매치·상세 이력에 보이게 하고, 보증금 요청 상태만 CANCELLED로 닫는다. PENDING 참가 행은 CANCELLED로 바꾼다. 취소된 매치는 상태 전이·출석 정산 대상이 아니다.
 - 생성 대기·실패 매치는 공개 검색/상세에서 제외한다. 정원·참가 목록·방장 권한·알림·리마인더·출석 대상·내 매치·참가 통계는 CONFIRMED 기준이다. 관리자 매치 상태 집계에는 생성 대기·실패 상태도 포함된다.
 - I1 기존 필드에 participationSuspended(boolean), suspendedUntil(KST LocalDateTime/null)을 추가해 사용한다. 신규 생성·참가·대기·승급 시 회원 활동 가능 여부와 정지를 검사한다. 실제 차감 시 user-service가 회원 행 잠금 안에서 다시 검사한다.
 
@@ -24,11 +24,11 @@
 
 - 발행 `match.deposit-charge-requested.v1`: requestType CREATE/JOIN/PROMOTE.
 - 발행 `match.deposit-refund-requested.v1`: reason CONFIRMATION_FAILED/PARTICIPANT_CANCELLED/MATCH_CANCELLED.
-- 수신 `user.deposit-charged.v1`: 차감 성공 후 매치·요청 잠금 안에서 매치 상태·마감·정원·요청 상태만 다시 확인한다. 회원 상태·정지는 user-service가 회원 행 잠금 안에서 검사한 뒤 차감하므로 결과 처리 단계에서 I1을 다시 부르지 않는다(신규 접수 단계의 I1 검사는 유지). 이미 종결된 요청(CANCELLED/FAILED)에 늦게 온 성공은 status·failureCode를 바꾸지 않고 반환(CONFIRMATION_FAILED)만 한 번 기록한다. 탈퇴(USER_WITHDRAWN) 요청은 반환하지 않는다.
+- 수신 `user.deposit-charged.v1`: 차감 성공 후 매치·요청 잠금 안에서 매치 상태·마감·정원·요청 상태만 다시 확인한다. 회원 상태·정지는 user-service가 회원 행 잠금 안에서 검사한 뒤 차감하므로 결과 처리 단계에서 I1을 다시 부르지 않는다(신규 접수 단계의 I1 검사는 유지). 이미 종결된 요청(CANCELLED/FAILED)에 늦게 온 성공은 status·failureCode를 바꾸지 않고 반환(CONFIRMATION_FAILED)만 한 번 기록한다. 탈퇴(USER_WITHDRAWN) 요청은 반환하지 않는다. JOIN·PROMOTE 접수 때 확인한 회원 성별을 내부 요청 상태에 저장하고, 확정 직전 잠근 매치의 현재 genderGroup(MIXED 제외)과 다르면 확정하지 않고 FAILED·failureCode `MATCH_GENDER_NOT_ALLOWED`로 두며 CONFIRMATION_FAILED 반환을 기록한다. 성별이 저장되지 않은 이전 요청은 기존처럼 확정한다.
 - 수신 `user.deposit-charge-rejected.v1`: reason INSUFFICIENT_POINTS/PARTICIPATION_SUSPENDED/REQUEST_CANCELLED/USER_NOT_ACTIVE. 실패 요청은 확정하지 않는다.
 - 수신 `user.deposit-refund-completed.v1`: outcome RETURNED/CANCELLED_BEFORE_CHARGE, creditedPoints(0~10 정수). 차감 전 취소는 0.
 - 수신 `user.participation-suspended.v1`: 공통 eventId·requestId·userId·matchId·occurredAt 모두 필수이며, requestId·matchId는 정지 원인이 된 노쇼 정산 건이다. 추가 필드 suspendedUntil은 오프셋을 포함한다. occurredAt까지 등록된 대기만 삭제하며, 정지 이벤트 지연/DLT 재처리 시 그 이후의 새 대기 등록과 기존 확정 참가·방장 매치는 유지한다.
-- 발행 `match.attendance-settlement-requested.v1`: 추가 필드 result(ATTENDED/NO_SHOW/UNDER_MIN_PARTICIPANTS). 아래 "상태 전이·출석 정산" 참고.
+- 발행 `match.attendance-settlement-requested.v1`: 추가 필드 outcome(ATTENDED/NO_SHOW/UNDER_MIN_PARTICIPANTS). 아래 "상태 전이·출석 정산" 참고.
 - 참가자 취소·매치 취소로 CANCELLED가 된 요청은 상태 조회 failureCode에 각각 `PARTICIPANT_CANCELLED`, `MATCH_CANCELLED`를 보인다(반환 사유와 같은 값).
 - 결과 소비 groupId `match-deposit-v1`. 실패 시 1초 간격 3회 재시도 후 `<원본 토픽>.DLT`. DLT 발행 실패는 소비 완료로 처리하지 않는다.
 - 기존 참가·상태·승급·리마인더 알림 이벤트 계약과 key(matchId)는 유지한다. 새 보증금 이벤트만 userId key를 사용한다.
@@ -40,7 +40,7 @@
 
 - 스케줄러 `MatchLifecycleScheduler`: `match.lifecycle.delay-ms`(기본 60000), `match.lifecycle.initial-delay-ms`(기본 60000), `match.lifecycle.enabled`(기본 true). 시작 시각이 지난 RECRUITING·CLOSED → IN_PROGRESS, 종료 시각이 지난 IN_PROGRESS → COMPLETED. 둘 다 지났으면 한 트랜잭션에서 IN_PROGRESS를 거쳐 COMPLETED까지 보낸다. CREATION_PENDING·CREATION_FAILED·CANCELLED·COMPLETED는 대상이 아니다. 대상은 id 커서로 100건씩 끝까지 읽어, 계속 실패하는 매치가 쌓여도 뒤 매치의 전이를 막지 않는다. 실패한 매치는 다음 스캔에서 다시 시도한다.
 - 매치 행 잠금 후 상태·시각을 다시 확인해 동시 실행·재실행에서도 한 번만 전이한다. 전이마다 기존 `match.status-changed.v1`(key matchId, participantIds는 CONFIRMED 기준)을 같은 트랜잭션 Outbox로 저장한다.
-- COMPLETED 전이 트랜잭션에서 CONFIRMED 참가자(방장 포함) 한 명마다 `match.attendance-settlement-requested.v1` 한 건. 공통 필드 eventId·requestId(그 참가자 행의 request_id)·userId·matchId·occurredAt + result. 확정 참가자 2명 미만이면 전원 UNDER_MIN_PARTICIPANTS, 아니면 출석값(ATTENDED/NO_SHOW). key는 userId. eventId는 `토픽:requestId`의 이름 기반 UUID라 같은 참가 요청에 두 건이 저장되지 않는다. `match.deposit.enabled=false`면 발행하지 않는다.
+- COMPLETED 전이 트랜잭션에서 CONFIRMED 참가자(방장 포함) 한 명마다 `match.attendance-settlement-requested.v1` 한 건. 공통 필드 eventId·requestId(그 참가자 행의 request_id)·userId·matchId·occurredAt + outcome. 확정 참가자 2명 미만이면 전원 UNDER_MIN_PARTICIPANTS, 아니면 출석값(ATTENDED/NO_SHOW). key는 userId. eventId는 `토픽:requestId`의 이름 기반 UUID라 같은 참가 요청에 두 건이 저장되지 않는다. `match.deposit.enabled=false`면 발행하지 않는다.
 - 출석 수정 `PATCH /api/matches/{matchId}/participants/{participantId}/attendance`: API_CONTRACT.md 참고.
 
 ## 영속 상태와 잠금
@@ -55,7 +55,7 @@
 - 대기 승급은 취소 커밋 후 별도 트랜잭션에서 실행한다. 회원 잠금은 즉시 획득만 시도하고, 회원 조회 장애/잠금 경합은 기존 취소에 영향을 주지 않는다. 10초 기본 유지보수 작업이 남은 빈자리를 재시도한다. 승급 후보가 차감 거절되면 다음 후보를 재시도한다.
 - 대기 등록 또는 PENDING 승급 요청이 남아 있으면 일반 참가 접수·확정을 제한하여 FIFO를 지킨다. PENDING을 실제 참가자 수에 포함하지 않는다. 승급 후보가 모두 거절되거나 만료된 빈 매치도 재시도 대상에 포함하여, 우선권이 사라지면 모집을 재개한다.
 - 생성의 202 응답은 커밋 전에 발급한 requestId를 서비스 반환값으로 전달하며 커밋 후 참가자 행을 재조회하지 않는다. 유지보수 작업은 마감된 요청만 만료 처리의 회원·매치 잠금을 획득한다.
-- 회원 탈퇴는 기존 Saga를 유지한다. 탈퇴 회원의 보증금은 반환하지 않으며 해당 요청을 취소해 늦은 확정을 막는다. 탈퇴 방장의 모임이 취소되면 다른 회원의 요청은 반환한다. 참가 기록은 삭제하지 않는다.
+- 회원 탈퇴는 기존 Saga를 유지한다. 탈퇴 회원의 보증금은 반환하지 않으며 해당 요청을 취소해 늦은 확정을 막는다. 탈퇴 방장의 모임이 취소되면 다른 회원의 요청은 반환하고 그 확정 참가 행은 유지한다(탈퇴 회원 본인 행은 CANCELLED). 참가 기록은 삭제하지 않는다.
 - 알려진 한계: R7 탈퇴 Saga의 시간 초과 복구(회원 쪽 5분 + 유예 30초 후 ACTIVE 복구) 경로에서, match-service가 이미 탈퇴 정리를 한 경우 그 회원의 확정 참가는 USER_WITHDRAWN으로 취소된 채 남고 확정 보증금은 반환되지 않는다. 자동 복구는 하지 않는다.
 
 ## DB 적용

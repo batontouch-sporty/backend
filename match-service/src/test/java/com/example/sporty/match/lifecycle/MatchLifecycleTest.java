@@ -127,9 +127,9 @@ class MatchLifecycleTest {
         assertThat(e.get(0).path("to").asText()).isEqualTo("COMPLETED");
         var s=outbox(MatchLifecycle.SETTLEMENT); assertThat(s).hasSize(3);
         var byUser=new HashMap<Long,JsonNode>(); s.forEach(n->byUser.put(n.path("userId").asLong(),n));
-        assertThat(byUser.get(1L).path("result").asText()).isEqualTo("ATTENDED");
-        assertThat(byUser.get(2L).path("result").asText()).isEqualTo("ATTENDED");
-        assertThat(byUser.get(3L).path("result").asText()).isEqualTo("NO_SHOW");
+        assertThat(byUser.get(1L).path("outcome").asText()).isEqualTo("ATTENDED");
+        assertThat(byUser.get(2L).path("outcome").asText()).isEqualTo("ATTENDED");
+        assertThat(byUser.get(3L).path("outcome").asText()).isEqualTo("NO_SHOW");
         var first=byUser.get(3L);
         assertThat(first.path("requestId").asText()).isEqualTo(id(m,3));
         assertThat(first.path("matchId").asLong()).isEqualTo(m);
@@ -158,7 +158,7 @@ class MatchLifecycleTest {
         lifecycle.advance(m);
         var s=outbox(MatchLifecycle.SETTLEMENT); assertThat(s).hasSize(1);
         assertThat(s.get(0).path("userId").asLong()).isEqualTo(1);
-        assertThat(s.get(0).path("result").asText()).isEqualTo("UNDER_MIN_PARTICIPANTS");
+        assertThat(s.get(0).path("outcome").asText()).isEqualTo("UNDER_MIN_PARTICIPANTS");
     }
     @Test void repeatedRunsAndRepeatedSettlementDoNotDuplicate() {
         long m=match(3,now.minusHours(3),now.minusHours(1),2L);
@@ -185,6 +185,9 @@ class MatchLifecycleTest {
         jdbc.update("UPDATE matches SET start_at=?,end_at=? WHERE id=?",now.minusHours(3),now.minusHours(1),pending);
         long cancelled=match(3,now.plusHours(1),now.plusHours(2),2L);
         crud.cancel(cancelled,1L);
+        // Cancellation keeps confirmed history rows.
+        assertThat(participants.countByMatch_Id(cancelled)).isEqualTo(2);
+        assertThat(crud.mine(2L)).extracting(MatchDtos.Mine::matchId).contains(cancelled);
         jdbc.update("UPDATE matches SET start_at=?,end_at=? WHERE id=?",now.minusHours(3),now.minusHours(1),cancelled);
         long future=match(3,now.plusHours(1),now.plusHours(2),2L);
         clearOutbox();
@@ -195,6 +198,7 @@ class MatchLifecycleTest {
         assertThat(state(future)).isEqualTo(MatchStatus.RECRUITING);
         assertThat(statusChanges()).isEmpty();
         assertThat(outbox(MatchLifecycle.SETTLEMENT)).isEmpty();
+        assertThat(participants.countByMatch_Id(cancelled)).isEqualTo(2);
     }
     @Test void concurrentRunsTransitionOnce() throws Exception {
         long m=match(3,now.minusHours(3),now.minusHours(1),2L);
@@ -213,61 +217,68 @@ class MatchLifecycleTest {
         long m=match(3,now.minusMinutes(10),now.plusHours(1),2L);
         long p=participant(m,2);
         mvc.perform(patch("/api/matches/"+m+"/participants/"+p+"/attendance").header("X-User-Id","1")
-                .contentType("application/json").content("{\"attendance\":\"NO_SHOW\"}"))
-            .andExpect(status().isOk()).andExpect(jsonPath("$.participantId").value(p))
-            .andExpect(jsonPath("$.userId").value(2)).andExpect(jsonPath("$.attendance").value("NO_SHOW"));
+                .contentType("application/json").content("{\"matchParticipantStatus\":\"NO_SHOW\"}"))
+            .andExpect(status().isNoContent()).andExpect(content().string(""));
+        // Saving the same value again has no further effect.
+        mvc.perform(patch("/api/matches/"+m+"/participants/"+p+"/attendance").header("X-User-Id","1")
+                .contentType("application/json").content("{\"matchParticipantStatus\":\"NO_SHOW\"}"))
+            .andExpect(status().isNoContent());
+        assertThat(participants.findById(p).orElseThrow().getMatchParticipantStatus()).isEqualTo("NO_SHOW");
         mvc.perform(get("/api/matches/"+m).header("X-User-Id","1")).andExpect(status().isOk())
             .andExpect(jsonPath("$.participants[1].participantId").value(p))
-            .andExpect(jsonPath("$.participants[1].attendance").value("NO_SHOW"))
-            .andExpect(jsonPath("$.participants[0].attendance").value("ATTENDED"))
+            .andExpect(jsonPath("$.participants[1].matchParticipantStatus").value("NO_SHOW"))
+            .andExpect(jsonPath("$.participants[0].matchParticipantStatus").value("ATTENDED"))
             .andExpect(jsonPath("$.participants[0].role").value("OWNER"));
         for(String viewer:new String[]{null,"2","99"}) {
             var req=get("/api/matches/"+m); if(viewer!=null) req=req.header("X-User-Id",viewer);
             mvc.perform(req).andExpect(status().isOk())
                 .andExpect(jsonPath("$.participants[1].participantId").value(p))
-                .andExpect(jsonPath("$.participants[1].attendance").doesNotExist())
-                .andExpect(jsonPath("$.participants[0].attendance").doesNotExist());
+                .andExpect(jsonPath("$.participants[1].matchParticipantStatus").doesNotExist())
+                .andExpect(jsonPath("$.participants[0].matchParticipantStatus").doesNotExist());
         }
         jdbc.update("UPDATE matches SET end_at=? WHERE id=?",now.minusMinutes(1),m);
         lifecycle.advance(m);
         assertThat(outbox(MatchLifecycle.SETTLEMENT)).filteredOn(n->n.path("userId").asLong()==2)
-            .extracting(n->n.path("result").asText()).containsExactly("NO_SHOW");
+            .extracting(n->n.path("outcome").asText()).containsExactly("NO_SHOW");
     }
     @Test void attendanceRejectsNonOwnerWrongTimeAndWrongTarget() throws Exception {
         long m=match(4,now.minusMinutes(10),now.plusHours(1),2L);
         long p=participant(m,2);
         joinPending(m,3L); long pending=participant(m,3);
         long other=match(3,now.minusMinutes(10),now.plusHours(1),4L); long foreign=participant(other,4);
-        String body="{\"attendance\":\"NO_SHOW\"}";
+        String body="{\"matchParticipantStatus\":\"NO_SHOW\"}";
         mvc.perform(patch("/api/matches/"+m+"/participants/"+p+"/attendance").header("X-User-Id","2")
                 .contentType("application/json").content(body))
             .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("FORBIDDEN"));
         mvc.perform(patch("/api/matches/"+m+"/participants/"+p+"/attendance")
                 .contentType("application/json").content(body)).andExpect(status().isUnauthorized());
         mvc.perform(patch("/api/matches/"+m+"/participants/"+p+"/attendance").header("X-User-Id","1")
-                .contentType("application/json").content("{\"attendance\":\"LATE\"}"))
+                .contentType("application/json").content("{\"attendance\":\"NO_SHOW\"}"))
+            .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+        mvc.perform(patch("/api/matches/"+m+"/participants/"+p+"/attendance").header("X-User-Id","1")
+                .contentType("application/json").content("{\"matchParticipantStatus\":\"LATE\"}"))
             .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_INPUT"));
         for(long target:new long[]{pending,foreign,999999})
             mvc.perform(patch("/api/matches/"+m+"/participants/"+target+"/attendance").header("X-User-Id","1")
                     .contentType("application/json").content(body))
-                .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("PARTICIPANT_NOT_FOUND"));
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("MATCH_PARTICIPANT_NOT_FOUND"));
         // before start
         jdbc.update("UPDATE matches SET start_at=?,end_at=? WHERE id=?",now.plusMinutes(10),now.plusHours(1),m);
         mvc.perform(patch("/api/matches/"+m+"/participants/"+p+"/attendance").header("X-User-Id","1")
                 .contentType("application/json").content(body))
-            .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("ATTENDANCE_NOT_EDITABLE"));
+            .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("ATTENDANCE_UPDATE_NOT_ALLOWED"));
         // after end, even while the scheduler has not completed it yet
         jdbc.update("UPDATE matches SET start_at=?,end_at=?,status='IN_PROGRESS' WHERE id=?",now.minusHours(2),now.minusMinutes(1),m);
         mvc.perform(patch("/api/matches/"+m+"/participants/"+p+"/attendance").header("X-User-Id","1")
                 .contentType("application/json").content(body))
-            .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("ATTENDANCE_NOT_EDITABLE"));
+            .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("ATTENDANCE_UPDATE_NOT_ALLOWED"));
         // completed or cancelled inside the time window
         for(String state:new String[]{"COMPLETED","CANCELLED"}) {
             jdbc.update("UPDATE matches SET start_at=?,end_at=?,status=?,cancelled_at=? WHERE id=?",
                 now.minusMinutes(10),now.plusHours(1),state,now,m);
             mvc.perform(patch("/api/matches/"+m+"/participants/"+p+"/attendance").header("X-User-Id","1")
                     .contentType("application/json").content(body))
-                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("ATTENDANCE_NOT_EDITABLE"));
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("ATTENDANCE_UPDATE_NOT_ALLOWED"));
         }
         assertThat(participants.findById(p).orElseThrow().getMatchParticipantStatus()).isEqualTo("ATTENDED");
     }

@@ -70,12 +70,13 @@ public class MatchCrudController {
     }
 
     @PatchMapping("/{matchId}/participants/{participantId}/attendance")
-    public MatchDtos.Attendance attendance(
+    public ResponseEntity<Void> attendance(
             @PathVariable Long matchId,
             @PathVariable Long participantId,
             @RequestHeader(value = "X-User-Id", required = false) String identity,
             @Valid @RequestBody MatchDtos.AttendanceUpdate request) {
-        return service.attendance(matchId, participantId, user(identity, true), request);
+        service.attendance(matchId, participantId, user(identity, true), request);
+        return ResponseEntity.noContent().build();
     }
 
     private static Long user(String identity, boolean required) {

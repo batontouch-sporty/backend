@@ -23,6 +23,8 @@ public class DepositStore {
     public static class Request {
         public String requestId, requestType, status="PENDING", refundStatus="NOT_REQUIRED";
         public String failureCode, failureMessage;
+        /** Member gender checked at JOIN/PROMOTE acceptance; null for CREATE and older rows. */
+        public String gender;
         public long userId, matchId;
         public OffsetDateTime deadlineAt;
         public boolean chargeAccepted, refundRequested;

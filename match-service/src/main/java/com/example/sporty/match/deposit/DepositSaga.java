@@ -45,12 +45,15 @@ public class DepositSaga {
 
     /** Caller holds member then match lock; pending requests do not reserve capacity. */
     @Transactional
-    public Accepted begin(MatchParticipantEntity p,String type) {
+    public Accepted begin(MatchParticipantEntity p,String type) { return begin(p,type,null); }
+
+    @Transactional
+    public Accepted begin(MatchParticipantEntity p,String type,String gender) {
         String requestId="CREATE".equals(type)?p.getMatch().getCreationRequestId():UUID.randomUUID().toString();
         p.pending(requestId);
         participants.saveAndFlush(p);
         var r=new DepositStore.Request(); r.requestId=requestId; r.userId=p.getUserId();
-        r.matchId=p.getMatch().getId(); r.requestType=type;
+        r.matchId=p.getMatch().getId(); r.requestType=type; r.gender=gender;
         r.deadlineAt=OffsetDateTime.now(ZoneOffset.UTC).plus(timeout);
         store.create(r);
         return new Accepted(requestId,r.matchId,"PENDING");
@@ -77,14 +80,18 @@ public class DepositSaga {
     @Transactional
     public void cancel(MatchParticipantEntity p,String reason) {
         var r=store.locked(p.getRequestId());
+        // A cancelled match keeps its confirmed participant rows as history; only the deposit closes.
+        boolean keep="MATCH_CANCELLED".equals(reason) && p.getParticipationStatus()==ParticipationStatus.CONFIRMED;
         if(r==null) {
             // R10 creates every deposit through begin(); old migrated fixtures have no deposit.
-            p.cancelParticipation(); return;
+            if(!keep) p.cancelParticipation();
+            return;
         }
         if(!Set.of("PENDING","CONFIRMED").contains(r.status)) return;
         r.status="CANCELLED";
         r.failureCode=reason; // PARTICIPANT_CANCELLED / MATCH_CANCELLED / CONFIRMATION_FAILED
-        store.refund(r,reason); store.save(r); p.cancelParticipation();
+        store.refund(r,reason); store.save(r);
+        if(!keep) p.cancelParticipation();
         if("CREATE".equals(r.requestType)) p.getMatch().failCreation(now());
     }
 
@@ -145,6 +152,14 @@ public class DepositSaga {
                     // Already closed (participant/match cancel, timeout, withdrawal, rejection):
                     // keep its status and reason, only record the refund for the late charge.
                     if(!"USER_WITHDRAWN".equals(r.failureCode)) store.refund(r,"CONFIRMATION_FAILED");
+                    break;
+                }
+                if(current && r.gender!=null && match.getGenderGroup()!=GenderGroup.MIXED
+                        && !match.getGenderGroup().name().equals(r.gender)) {
+                    // Owner changed the gender rule after acceptance; never confirm a mismatch.
+                    r.status="FAILED"; r.failureCode="MATCH_GENDER_NOT_ALLOWED";
+                    r.failureMessage="성별 조건이 맞지 않아 보증금 반환을 요청했습니다.";
+                    store.refund(r,"CONFIRMATION_FAILED"); p.fail();
                     break;
                 }
                 boolean allowed=current

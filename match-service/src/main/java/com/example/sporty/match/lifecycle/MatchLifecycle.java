@@ -95,7 +95,7 @@ public class MatchLifecycle {
             fields.put("userId", p.getUserId());
             fields.put("matchId", match.getId());
             fields.put("occurredAt", OffsetDateTime.now(ZoneOffset.UTC).toString());
-            fields.put("result", underMin ? "UNDER_MIN_PARTICIPANTS" : p.getMatchParticipantStatus());
+            fields.put("outcome", underMin ? "UNDER_MIN_PARTICIPANTS" : p.getMatchParticipantStatus());
             try {
                 jdbc.update(
                         "INSERT INTO outbox_event(event_id,aggregate_id,event_type,payload) VALUES"

@@ -71,7 +71,7 @@ public class ParticipationService {
         checks.checkParticipantGender(member, match.getGenderGroup().name());
         var participant = previous.orElseGet(() -> new MatchParticipantEntity(match,userId,MatchParticipantRole.PARTICIPANT));
         if (deposits.isEnabled()) {
-            var accepted=deposits.begin(participant,"JOIN");
+            var accepted=deposits.begin(participant,"JOIN",member.gender());
             return new Participation(participant.getId(),matchId,userId,participant.getRole(),accepted.requestId());
         }
         participant.confirm();

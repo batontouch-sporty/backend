@@ -36,7 +36,8 @@ import lombok.extern.slf4j.Slf4j;
 @Component
 public class MockLlm {
 
-    private static final Pattern HOUR = Pattern.compile("(오전|오후|아침|낮|저녁|밤)?\\s*(\\d{1,2})\\s*시");
+    // "저녁 7시", "7시 30분", "7시 반"
+    private static final Pattern HOUR = Pattern.compile("(오전|오후|아침|낮|저녁|밤)?\\s*(\\d{1,2})\\s*시(?:\\s*(\\d{1,2})\\s*분|\\s*(반))?");
     private static final Pattern PEOPLE = Pattern.compile("(\\d{1,3})\\s*명");
     private static final Pattern CANDIDATE = Pattern.compile("^- id=(\\d+) \\| ([^|]*) \\| ([^|]*) \\|", Pattern.MULTILINE);
     private static final int RECOMMEND_SIZE = 3;
@@ -182,7 +183,7 @@ public class MockLlm {
         return null;
     }
 
-    private static LocalTime time(String prompt) {
+    static LocalTime time(String prompt) {
         Matcher matcher = HOUR.matcher(prompt == null ? "" : prompt);
         if (!matcher.find()) {
             return null;
@@ -193,7 +194,8 @@ public class MockLlm {
         if (afternoon && hour < 12) {
             hour += 12;
         }
-        return hour <= 23 ? LocalTime.of(hour, 0) : null;
+        int minute = matcher.group(3) != null ? Integer.parseInt(matcher.group(3)) : matcher.group(4) != null ? 30 : 0;
+        return hour <= 23 && minute <= 59 ? LocalTime.of(hour, minute) : null;
     }
 
     // 성별 구성: 실제 프롬프트처럼 문장에 있을 때만 채운다.

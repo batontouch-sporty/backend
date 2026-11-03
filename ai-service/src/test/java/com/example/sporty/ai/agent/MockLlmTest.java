@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.temporal.TemporalAdjusters;
 
 import org.junit.jupiter.api.Test;
@@ -106,5 +107,25 @@ class MockLlmTest {
         JsonNode condition = read(mock.search("여자만 하는 매치"));
 
         assertThat(condition.get("genderGroup").asText()).isEqualTo("FEMALE");
+    }
+
+    @Test
+    void 이번_주와_다음_주_토요일을_구분한다() {
+        LocalDate tuesday = LocalDate.of(2026, 11, 3);
+
+        assertThat(MockLlm.dateRange("이번 주 토요일 저녁 7시 농구", tuesday))
+                .containsExactly(LocalDate.of(2026, 11, 7), LocalDate.of(2026, 11, 7));
+        assertThat(MockLlm.dateRange("다음 주 토요일 저녁 7시 농구", tuesday))
+                .containsExactly(LocalDate.of(2026, 11, 14), LocalDate.of(2026, 11, 14));
+        assertThat(MockLlm.dateRange("다음주 토요일 농구", tuesday))
+                .containsExactly(LocalDate.of(2026, 11, 14), LocalDate.of(2026, 11, 14));
+    }
+
+    @Test
+    void 분과_반을_시각에_반영한다() {
+        assertThat(MockLlm.time("내일 저녁 7시 30분 농구")).isEqualTo(LocalTime.of(19, 30));
+        assertThat(MockLlm.time("내일 저녁 7시 반 농구")).isEqualTo(LocalTime.of(19, 30));
+        assertThat(MockLlm.time("오전 10시 풋살")).isEqualTo(LocalTime.of(10, 0));
+        assertThat(MockLlm.time("토요일 저녁 7시 농구 10명")).isEqualTo(LocalTime.of(19, 0));
     }
 }

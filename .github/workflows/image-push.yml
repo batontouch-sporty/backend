@@ -19,8 +19,10 @@ on:
 permissions:
   contents: read
 
+# 커밋마다 따로 실행해 대기 중인 실행이 취소되지 않게 한다(커밋별 <sha7> 이미지 보존).
+# latest는 push job에서 main 최신 커밋일 때만 올려 순서가 뒤집히지 않게 한다.
 concurrency:
-  group: image-push-${{ github.ref }}
+  group: image-push-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:
@@ -92,8 +94,17 @@ jobs:
         id: tag
         run: echo "sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
+      - name: main 최신 커밋인지 확인
+        id: head
+        run: |
+          if [ "$GITHUB_REF" = refs/heads/main ] && [ "$(git ls-remote origin refs/heads/main | cut -f1)" = "$GITHUB_SHA" ]; then
+            echo "latest=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "latest=false" >> "$GITHUB_OUTPUT"
+          fi
+
       # 빌드 context는 저장소 루트다(Dockerfile 주석 참고).
-      # latest는 main에서만 올린다. 다른 브랜치 수동 실행은 <sha7>만 올린다.
+      # latest는 main 최신 커밋일 때만 올린다. 다른 브랜치나 이미 지난 커밋은 <sha7>만 올린다.
       - name: 이미지 빌드 · push
         uses: docker/build-push-action@v6
         with:
@@ -103,5 +114,5 @@ jobs:
           push: true
           tags: |
             ${{ vars.DOCKERHUB_NAMESPACE }}/sporty-${{ matrix.service }}-service:${{ steps.tag.outputs.sha }}
-            ${{ github.ref == 'refs/heads/main' && format('{0}/sporty-{1}-service:latest', vars.DOCKERHUB_NAMESPACE, matrix.service) || '' }}
+            ${{ steps.head.outputs.latest == 'true' && format('{0}/sporty-{1}-service:latest', vars.DOCKERHUB_NAMESPACE, matrix.service) || '' }}
           cache-from: type=gha,scope=sporty-build

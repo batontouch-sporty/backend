@@ -57,7 +57,7 @@ class DepositEventConsumerTest {
     }
 
     private void attendance(long uid, UUID request, String result) throws Exception {
-        send(ATTENDANCE_REQUESTED, uid, request, "\"result\":\"" + result + "\"");
+        send(ATTENDANCE_REQUESTED, uid, request, "\"outcome\":\"" + result + "\"");
     }
 
     // 이 회원 key로 쌓인 결과 이벤트(저장 순서)
@@ -165,7 +165,7 @@ class DepositEventConsumerTest {
     void attendanceWithoutChargeIsRecordedWithoutEvent() throws Exception {
         long uid = member(50);
         String eventId = UUID.randomUUID().toString();
-        send(ATTENDANCE_REQUESTED, eventId, uid, UUID.randomUUID(), "\"result\":\"ATTENDED\"");
+        send(ATTENDANCE_REQUESTED, eventId, uid, UUID.randomUUID(), "\"outcome\":\"ATTENDED\"");
         assertThat(processed.existsById(eventId)).isTrue();
         assertThat(eventCount(uid)).isZero();
         assertThat(balance(uid)).isEqualTo(50);
@@ -297,7 +297,7 @@ class DepositEventConsumerTest {
                 {"eventId":"%s","requestId":"%s","userId":"%d","matchId":7,"occurredAt":"2026-11-03T01:00:00Z","reason":"MATCH_CANCELLED"}
                 """.formatted(UUID.randomUUID(), request, uid))).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> consumer.handle(ATTENDANCE_REQUESTED, """
-                {"eventId":"%s","requestId":"%s","userId":%d,"matchId":7,"occurredAt":"yesterday","result":"ATTENDED"}
+                {"eventId":"%s","requestId":"%s","userId":%d,"matchId":7,"occurredAt":"yesterday","outcome":"ATTENDED"}
                 """.formatted(UUID.randomUUID(), request, uid))).isInstanceOf(IllegalArgumentException.class);
         assertThat(balance(uid)).isEqualTo(50);
         assertThat(eventCount(uid)).isZero();

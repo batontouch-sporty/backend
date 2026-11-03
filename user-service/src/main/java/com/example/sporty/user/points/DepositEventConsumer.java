@@ -56,13 +56,14 @@ public class DepositEventConsumer {
     private final Clock clock;
 
     @KafkaListener(topics = {CHARGE_REQUESTED, REFUND_REQUESTED, ATTENDANCE_REQUESTED}, groupId = GROUP)
-    @Transactional
+    // 결과 직렬화 실패(checked)도 정산과 함께 롤백한다. 커밋되면 재처리가 DUPLICATE로 끝나 결과가 나가지 않는다.
+    @Transactional(rollbackFor = Exception.class)
     public void handle(@Header(KafkaHeaders.RECEIVED_TOPIC) String topic, String payload) throws JsonProcessingException {
         JsonNode body = json.readTree(payload);
         Action action = switch (topic) {
             case CHARGE_REQUESTED -> { oneOf(body, "requestType", REQUEST_TYPES); yield Action.CHARGE; }
             case REFUND_REQUESTED -> { oneOf(body, "reason", REFUND_REASONS); yield Action.REFUND; }
-            case ATTENDANCE_REQUESTED -> Action.valueOf(oneOf(body, "result", ATTENDANCE_RESULTS));
+            case ATTENDANCE_REQUESTED -> Action.valueOf(oneOf(body, "outcome", ATTENDANCE_RESULTS));
             default -> throw new IllegalArgumentException("알 수 없는 토픽: " + topic);
         };
         try {

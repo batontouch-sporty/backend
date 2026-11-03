@@ -79,7 +79,7 @@ docker compose --env-file .env -f deploy/infra/compose.yml down
 
 2단계는 아래 셋 중 **하나만** 실행한다. B의 DB 볼륨은 `sporty_mariadb-data`이고, 한 번 만들어지면 `up`을 다시 해도 그대로 쓴다.
 
-방법 1: B를 처음 띄운다(B의 DB 볼륨이 아직 없음). 첫 기동 때 R10 스키마·서비스 계정·관리자 계정이 만들어진다.
+방법 1: B를 처음 띄운다(B의 DB 볼륨이 아직 없음). 첫 기동 때 R10 스키마·서비스 계정이 만들어진다. 관리자 계정은 `.env`에 `ADMIN_EMAIL`·`ADMIN_PASSWORD`를 넣었을 때만 만들어진다.
 
 ```bash
 docker compose -f docker-compose.yml -f deploy/single/compose.yml up -d --wait
@@ -101,7 +101,7 @@ docker volume inspect sporty-infra_mariadb-data >/dev/null \
   && docker volume create sporty_mariadb-data \
   && docker run --rm -v sporty-infra_mariadb-data:/from:ro -v sporty_mariadb-data:/to alpine sh -c "cp -a /from/. /to/" \
   && docker compose -f docker-compose.yml -f deploy/single/compose.yml up -d --wait \
-  || echo "중단: A의 DB 볼륨이 없거나, B의 DB 볼륨이 이미 있거나, 복사에 실패했다"
+  || { echo "중단: A의 DB 볼륨이 없거나, B의 DB 볼륨이 이미 있거나, 복사·기동에 실패했다"; false; }
 ```
 
 - B로 전환한 뒤 A로 되돌아가려면 B를 `down`(볼륨 유지)으로 내리고 A를 다시 올린다. A의 DB는 1단계에서 남겨 둔 그대로다.

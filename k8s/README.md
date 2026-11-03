@@ -49,7 +49,7 @@ Eureka의 등록 정보는 메모리에 보관되므로 새 서버가 시작된 
 
 `Recreate`는 레지스트리 보존이나 무중단 배포를 보장하지 않는다. 복구 시간은 애플리케이션 시작, probe, Eureka 등록 및 캐시 갱신 주기 등 실제 환경에 따라 달라지므로 30초와 같은 고정 시간으로 단정하지 않는다. 실제 교체 동작과 복구 과정은 아직 검증하지 않았으며 후속 배포 단계에서 확인한다.
 
-`startupProbe`는 최초 10초 뒤 5초 간격으로 최대 24회 실패를 허용한다. 즉 probe 요청 시간까지 고려하면 약 130초 동안 시작을 기다릴 수 있다. `startupProbe`가 성공할 때까지 `livenessProbe`와 `readinessProbe`의 실행은 보류된다. 이후 liveness는 10초, readiness는 5초 간격으로 검사하며 각 요청의 timeout은 3초이다. `startupProbe` 또는 `livenessProbe`가 설정된 연속 실패 기준에 도달하면 해당 컨테이너가 재시작된다. `readinessProbe`가 연속 3회 실패하면 Pod는 `Ready=false` 상태가 되어 Service의 일반 트래픽 대상에서 제외되지만, readiness 실패 자체가 컨테이너를 재시작시키지는 않는다.
+`startupProbe`는 최초 10초 뒤 5초 간격으로 최대 48회 실패를 허용한다. 즉 probe 요청 시간까지 고려하면 약 250초 동안 시작을 기다릴 수 있다. AWS 배포에서 match-service는 시작부터 기동 완료까지 약 134초가 걸려 24회(약 130초)로는 기동 직전에 재시작됐다. 서비스 여러 개가 동시에 뜨면 CPU limit 500m 안에서 더 느려지므로 Spring 앱 8개 모두 48회로 둔다. `startupProbe`가 성공할 때까지 `livenessProbe`와 `readinessProbe`의 실행은 보류된다. 이후 liveness는 10초, readiness는 5초 간격으로 검사하며 각 요청의 timeout은 3초이다. `startupProbe` 또는 `livenessProbe`가 설정된 연속 실패 기준에 도달하면 해당 컨테이너가 재시작된다. `readinessProbe`가 연속 3회 실패하면 Pod는 `Ready=false` 상태가 되어 Service의 일반 트래픽 대상에서 제외되지만, readiness 실패 자체가 컨테이너를 재시작시키지는 않는다.
 
 Java 17 환경에서 다음 의존성 확인 명령을 실행한 결과, `spring-boot-starter-actuator:3.5.4`가 `spring-cloud-netflix-eureka-server:4.3.0`을 통해 Discovery의 `runtimeClasspath`에 전이 포함됨을 확인했다.
 

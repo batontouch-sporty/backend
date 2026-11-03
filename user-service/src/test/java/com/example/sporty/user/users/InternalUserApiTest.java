@@ -8,6 +8,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
 
@@ -43,6 +45,8 @@ import com.example.sporty.user.users.repository.UserRepository;
 @AutoConfigureMockMvc
 @Transactional
 class InternalUserApiTest {
+    private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
+
     @Autowired MockMvc mvc;
     @Autowired EntityManager em;
     @Autowired EntityManagerFactory emf;
@@ -62,7 +66,33 @@ class InternalUserApiTest {
                 .andExpect(jsonPath("$.gender").value("FEMALE"))
                 .andExpect(jsonPath("$.status").value("ACTIVE"))
                 .andExpect(jsonPath("$.district").value("MAPO"))
-                .andExpect(jsonPath("$.sportTypes", contains("FUTSAL", "RUNNING")));
+                .andExpect(jsonPath("$.sportTypes", contains("FUTSAL", "RUNNING")))
+                .andExpect(jsonPath("$.participationSuspended").value(false))
+                .andExpect(jsonPath("$.suspendedUntil").value(nullValue()));
+    }
+
+    @Test
+    void getUserOfSuspendedMemberReturnsSuspendedUntilAsKstStringWithoutOffset() throws Exception {
+        UserEntity user = user(UserStatus.ACTIVE, Gender.MALE, nickname());
+        LocalDateTime until = LocalDateTime.now(SEOUL).plusDays(7).toLocalDate().atStartOfDay();
+        suspend(user, until);
+
+        mvc.perform(get("/internal/users/{id}", user.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.participationSuspended").value(true))
+                .andExpect(jsonPath("$.suspendedUntil").value(until.toLocalDate() + "T00:00:00"));
+    }
+
+    // 정지 해제 스케줄러가 아직 돌지 않아 컬럼이 남아 있어도, 종료 시각이 지났으면 정지가 아니다.
+    @Test
+    void getUserAfterSuspendedUntilPassedIsNotSuspendedEvenBeforeExpiryJob() throws Exception {
+        UserEntity user = user(UserStatus.ACTIVE, Gender.MALE, nickname());
+        suspend(user, LocalDateTime.now(SEOUL).minusMinutes(1));
+
+        mvc.perform(get("/internal/users/{id}", user.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.participationSuspended").value(false))
+                .andExpect(jsonPath("$.suspendedUntil").value(nullValue()));
     }
 
     @Test
@@ -172,6 +202,13 @@ class InternalUserApiTest {
         em.flush();
         em.clear();
         return user;
+    }
+
+    private void suspend(UserEntity user, LocalDateTime until) {
+        UserEntity saved = users.findById(user.getId()).orElseThrow();
+        saved.suspendUntil(until);
+        em.flush();
+        em.clear();
     }
 
     private String nickname() { return "n-" + UUID.randomUUID().toString().substring(0, 12); }

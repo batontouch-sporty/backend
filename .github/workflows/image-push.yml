@@ -106,7 +106,8 @@ jobs:
           tags: ${{ vars.DOCKERHUB_NAMESPACE }}/sporty-${{ matrix.service }}-service:${{ steps.tag.outputs.sha }}
           cache-from: type=gha,scope=sporty-build-${{ github.sha }}
 
-  # latest는 main에서만, 커밋 실행들을 한 줄로 세워 갱신한다. 새 커밋의 latest job이 들어오면 이전 것은 취소된다.
+  # latest는 main에서만, 커밋 실행들을 한 줄로 세워 갱신한다. 취소하지 않고 순서대로 돌리되 각자 붙이기 직전에 main 최신인지 확인하므로,
+  # 늦게 끝난 이전 커밋이 최신 커밋의 갱신을 막거나 덮어쓰지 못한다.
   # 다시 빌드하지 않고 이미 올린 <sha7> 이미지에 latest 태그만 붙이며, 붙이기 직전에 이 커밋이 main 최신인지 확인한다.
   latest:
     name: latest 태그 갱신
@@ -116,7 +117,7 @@ jobs:
     timeout-minutes: 10
     concurrency:
       group: image-latest-${{ github.ref }}
-      cancel-in-progress: true
+      cancel-in-progress: false
     steps:
       - name: Buildx 준비
         uses: docker/setup-buildx-action@v3

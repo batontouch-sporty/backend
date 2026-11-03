@@ -24,7 +24,7 @@
 
 - 발행 `match.deposit-charge-requested.v1`: requestType CREATE/JOIN/PROMOTE.
 - 발행 `match.deposit-refund-requested.v1`: reason CONFIRMATION_FAILED/PARTICIPANT_CANCELLED/MATCH_CANCELLED.
-- 수신 `user.deposit-charged.v1`: 차감 성공 후 매치·요청 잠금 안에서 매치 상태·마감·정원·요청 상태만 다시 확인한다. 회원 상태·정지는 user-service가 회원 행 잠금 안에서 검사한 뒤 차감하므로 결과 처리 단계에서 I1을 다시 부르지 않는다(신규 접수 단계의 I1 검사는 유지). 이미 종결된 요청(CANCELLED/FAILED)에 늦게 온 성공은 status·failureCode를 바꾸지 않고 반환(CONFIRMATION_FAILED)만 한 번 기록한다. 탈퇴(USER_WITHDRAWN) 요청은 반환하지 않는다. JOIN·PROMOTE 접수 때 확인한 회원 성별을 내부 요청 상태에 저장하고, 확정 직전 잠근 매치의 현재 genderGroup(MIXED 제외)과 다르면 확정하지 않고 FAILED·failureCode `MATCH_GENDER_NOT_ALLOWED`로 두며 CONFIRMATION_FAILED 반환을 기록한다. 성별이 저장되지 않은 이전 요청은 기존처럼 확정한다.
+- 수신 `user.deposit-charged.v1`: 차감 성공 후 매치·요청 잠금 안에서 매치 상태·마감·정원·요청 상태만 다시 확인한다. 회원 상태·정지는 user-service가 회원 행 잠금 안에서 검사한 뒤 차감하므로 결과 처리 단계에서 I1을 다시 부르지 않는다(신규 접수 단계의 I1 검사는 유지). 이미 종결된 요청(CANCELLED/FAILED)에 늦게 온 성공은 status·failureCode를 바꾸지 않고 반환(CONFIRMATION_FAILED)만 한 번 기록한다. 탈퇴(USER_WITHDRAWN) 요청은 반환하지 않는다. JOIN·PROMOTE 접수 때 확인한 회원 성별을 내부 요청 상태에 저장하고, 확정 직전 잠근 매치의 현재 genderGroup(MIXED 제외)과 다르면 확정하지 않고 CANCELLED·failureCode `MATCH_GENDER_NOT_ALLOWED`로 두며(참가 행도 CANCELLED, v4.0 5-3 차감 후 확정 실패) CONFIRMATION_FAILED 반환을 기록한다. 성별이 저장되지 않은 이전 요청은 기존처럼 확정한다.
 - 수신 `user.deposit-charge-rejected.v1`: reason INSUFFICIENT_POINTS/PARTICIPATION_SUSPENDED/REQUEST_CANCELLED/USER_NOT_ACTIVE. 실패 요청은 확정하지 않는다.
 - 수신 `user.deposit-refund-completed.v1`: outcome RETURNED/CANCELLED_BEFORE_CHARGE, creditedPoints(0~10 정수). 차감 전 취소는 0.
 - 수신 `user.participation-suspended.v1`: 공통 eventId·requestId·userId·matchId·occurredAt 모두 필수이며, requestId·matchId는 정지 원인이 된 노쇼 정산 건이다. 추가 필드 suspendedUntil은 오프셋을 포함한다. occurredAt까지 등록된 대기만 삭제하며, 정지 이벤트 지연/DLT 재처리 시 그 이후의 새 대기 등록과 기존 확정 참가·방장 매치는 유지한다.

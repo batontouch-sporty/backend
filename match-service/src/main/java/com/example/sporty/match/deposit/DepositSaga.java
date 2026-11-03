@@ -157,9 +157,9 @@ public class DepositSaga {
                 if(current && r.gender!=null && match.getGenderGroup()!=GenderGroup.MIXED
                         && !match.getGenderGroup().name().equals(r.gender)) {
                     // Owner changed the gender rule after acceptance; never confirm a mismatch.
-                    r.status="FAILED"; r.failureCode="MATCH_GENDER_NOT_ALLOWED";
+                    r.status="CANCELLED"; r.failureCode="MATCH_GENDER_NOT_ALLOWED";
                     r.failureMessage="성별 조건이 맞지 않아 보증금 반환을 요청했습니다.";
-                    store.refund(r,"CONFIRMATION_FAILED"); p.fail();
+                    store.refund(r,"CONFIRMATION_FAILED"); p.cancelParticipation();
                     break;
                 }
                 boolean allowed=current

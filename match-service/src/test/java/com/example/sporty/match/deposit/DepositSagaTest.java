@@ -385,13 +385,14 @@ class DepositSagaTest {
         assertThat(participants.countByMatch_Id(m)).isOne();
     }
     void gender(long m,String g) { jdbc.update("UPDATE matches SET gender_group=? WHERE id=?",g,m); }
-    @Test void genderRuleChangedAfterJoinFailsConfirmationAndRefunds() {
+    @Test void genderRuleChangedAfterJoinCancelsConfirmationAndRefunds() {
         long m=ready(3); participation.join(m,2L); String id=id(m,2);
         assertThat(tx.execute(x->store.get(id)).gender).isEqualTo("MALE");
         gender(m,"FEMALE"); charged(id);
         var s=saga.status(id,2);
-        assertThat(s.status()).isEqualTo("FAILED"); assertThat(s.failureCode()).isEqualTo("MATCH_GENDER_NOT_ALLOWED");
-        assertThat(participants.findByMatch_IdAndUserId(m,2L).orElseThrow().getParticipationStatus()).isEqualTo(ParticipationStatus.FAILED);
+        assertThat(s.status()).isEqualTo("CANCELLED"); assertThat(s.failureCode()).isEqualTo("MATCH_GENDER_NOT_ALLOWED");
+        assertThat(s.refundStatus()).isEqualTo("PENDING");
+        assertThat(participants.findByMatch_IdAndUserId(m,2L).orElseThrow().getParticipationStatus()).isEqualTo(ParticipationStatus.CANCELLED);
         assertThat(participants.countByMatch_Id(m)).isOne();
         assertThat(outbox(DepositStore.REFUND)).isOne();
         assertThat(outbox("match.joined.v1")).isZero();

@@ -19,9 +19,15 @@ public interface WithdrawalSagaRepository extends JpaRepository<WithdrawalSagaEn
     @Query("select s from WithdrawalSagaEntity s where s.sagaId = :sagaId")
     Optional<WithdrawalSagaEntity> findForUpdate(String sagaId);
 
-    // 마감(+유예)이 지난 PROCESSING Saga ID. 처리할 때 한 건씩 다시 잠근다.
-    @Query("select s.sagaId from WithdrawalSagaEntity s where s.status = :status and s.deadlineAt < :before order by s.deadlineAt")
-    List<String> findIdsByStatusAndDeadlineBefore(SagaStatus status, LocalDateTime before, Limit limit);
+    // 마감(+유예)이 지난 PROCESSING Saga ID를 (마감, sagaId) 순서로 커서 뒤부터 읽는다. 처리할 때 한 건씩 다시 잠근다.
+    // 조회에 실패해 남은 건이 앞을 차지해도 뒤의 Saga까지 한 주기에 끝까지 돈다.
+    @Query("""
+            select s.sagaId, s.deadlineAt from WithdrawalSagaEntity s
+            where s.status = :status and s.deadlineAt < :before
+              and (s.deadlineAt > :afterDeadline or (s.deadlineAt = :afterDeadline and s.sagaId > :afterId))
+            order by s.deadlineAt, s.sagaId""")
+    List<Object[]> findExpiredAfter(SagaStatus status, LocalDateTime before,
+            LocalDateTime afterDeadline, String afterId, Limit limit);
 
     // [A28] 상태별 Saga 수 [status, count]
     @Query("select s.status, count(s) from WithdrawalSagaEntity s group by s.status")

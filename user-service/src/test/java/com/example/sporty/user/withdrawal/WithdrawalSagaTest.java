@@ -348,6 +348,33 @@ class WithdrawalSagaTest {
         assertThat(sagas.findById(saga.getSagaId()).orElseThrow().getStatus()).isEqualTo(SagaStatus.CLEANED);
     }
 
+    // 앞의 50건이 계속 조회 실패해도 51번째는 같은 주기에 확인한다(커서 순회)
+    @Test
+    void failingLookupsDoNotStarveLaterSagas() {
+        java.util.List<WithdrawalSagaEntity> failing = new java.util.ArrayList<>();
+        for (int i = 0; i < 50; i++) {
+            failing.add(accept(user(UserStatus.ACTIVE)));
+        }
+        at(T0.plus(Duration.ofSeconds(1)));
+        UserEntity last = user(UserStatus.ACTIVE);
+        WithdrawalSagaEntity lastSaga = accept(last);
+        java.util.Set<String> failingIds = new java.util.HashSet<>();
+        failing.forEach(s -> failingIds.add(s.getSagaId()));
+        answer(inv -> {
+            if (failingIds.contains(inv.getArgument(0))) {
+                throw new RuntimeException("match-service down for this saga");
+            }
+            return new WithdrawalResult(inv.getArgument(0), inv.getArgument(2), inv.getArgument(1), "CLEANED");
+        });
+
+        at(T0.plus(Duration.ofMinutes(6)));
+        assertThat(sagaService.timeOutExpired()).isEqualTo(1);
+
+        assertThat(users.findById(last.getId()).orElseThrow().getStatus()).isEqualTo(UserStatus.WITHDRAWN);
+        assertThat(sagas.findById(lastSaga.getSagaId()).orElseThrow().getStatus()).isEqualTo(SagaStatus.CLEANED);
+        assertThat(sagas.findById(failing.get(0).getSagaId()).orElseThrow().getStatus()).isEqualTo(SagaStatus.PROCESSING);
+    }
+
     // 응답 식별 값 불일치·형식 오류·모르는 result는 NONE이 아니라 조회 실패(WITHDRAWING 유지 + 실패 지표)
     @Test
     void mismatchedOrUnknownLookupResponseIsAFailure() {

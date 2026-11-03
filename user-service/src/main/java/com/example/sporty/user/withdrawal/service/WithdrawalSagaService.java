@@ -129,22 +129,31 @@ public class WithdrawalSagaService {
     // 마감 + 유예가 지난 PROCESSING Saga를 match 결과에 맞춰 끝낸다. 처리한 건수를 돌려준다.
     public int timeOutExpired() {
         LocalDateTime before = utc(clock.instant().minus(properties.grace()));
-        List<String> sagaIds = sagaRepository.findIdsByStatusAndDeadlineBefore(
-                SagaStatus.PROCESSING, before, Limit.of(TIMEOUT_BATCH));
-
+        // (마감, sagaId) 커서로 끝까지 돈다. 조회에 실패한 건은 남아도 뒤의 Saga 확인을 막지 않는다.
+        LocalDateTime afterDeadline = LocalDateTime.of(1970, 1, 1, 0, 0);
+        String afterId = "";
         int count = 0;
-        for (String sagaId : sagaIds) {
-            // 원격 조회는 트랜잭션 밖에서 하고, 반영은 한 건씩 짧은 트랜잭션으로 커밋한다(한 건 실패가 다른 건을 막지 않게).
-            String result = matchResult(sagaId);
-            if (result == null) {
-                continue;
+        while (true) {
+            List<Object[]> batch = sagaRepository.findExpiredAfter(
+                    SagaStatus.PROCESSING, before, afterDeadline, afterId, Limit.of(TIMEOUT_BATCH));
+            for (Object[] row : batch) {
+                String sagaId = (String) row[0];
+                afterId = sagaId;
+                afterDeadline = (LocalDateTime) row[1];
+                // 원격 조회는 트랜잭션 밖에서 하고, 반영은 한 건씩 짧은 트랜잭션으로 커밋한다(한 건 실패가 다른 건을 막지 않게).
+                String result = matchResult(sagaId);
+                if (result == null) {
+                    continue;
+                }
+                Boolean done = transaction.execute(status -> timeOutOne(sagaId, before, result));
+                if (Boolean.TRUE.equals(done)) {
+                    count++;
+                }
             }
-            Boolean done = transaction.execute(status -> timeOutOne(sagaId, before, result));
-            if (Boolean.TRUE.equals(done)) {
-                count++;
+            if (batch.size() < TIMEOUT_BATCH) {
+                return count;
             }
         }
-        return count;
     }
 
     // match에 이 Saga 결과를 묻는다. 호출 실패(409 마감 전·5xx·연결 실패 포함), 식별 값 불일치, 모르는 값이면 null

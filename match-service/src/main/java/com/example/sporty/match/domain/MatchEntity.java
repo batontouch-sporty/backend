@@ -98,6 +98,14 @@ public class MatchEntity {
     @Column(name = "updated_at", columnDefinition = "TIMESTAMP(6)", nullable = false)
     private Instant updatedAt;
 
+    @Column(name = "creation_request_id", length = 36, nullable = false, unique = true)
+    private String creationRequestId = java.util.UUID.randomUUID().toString();
+
+    public String getCreationRequestId() { return creationRequestId; }
+    public void beginCreation() { status = MatchStatus.CREATION_PENDING; }
+    public void failCreation(LocalDateTime at) {
+        if (status == MatchStatus.CREATION_PENDING) { status = MatchStatus.CREATION_FAILED; statusChangedAt = at; }
+    }
     protected MatchEntity() {}
 
     public MatchEntity(Details details, FacilitySnapshot facility) {
@@ -127,7 +135,7 @@ public class MatchEntity {
     public void changeStatus(MatchStatus next, LocalDateTime changedAt) {
         Objects.requireNonNull(next);
         Objects.requireNonNull(changedAt);
-        if (status == MatchStatus.CANCELLED || status == MatchStatus.COMPLETED) {
+        if (status == MatchStatus.CANCELLED || status == MatchStatus.COMPLETED || status == MatchStatus.CREATION_FAILED) {
             throw new IllegalStateException("Cannot change status from " + status);
         }
         if (status == MatchStatus.IN_PROGRESS

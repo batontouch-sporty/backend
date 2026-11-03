@@ -33,7 +33,7 @@ public class MatchStatsService {
             return null;
         });
         long total = byStatus.values().stream().mapToLong(Long::longValue).sum();
-        long participantTotal = jdbc.queryForObject("SELECT COUNT(*) FROM match_participants", Long.class);
+        long participantTotal = jdbc.queryForObject("SELECT COUNT(*) FROM match_participants WHERE participation_status='CONFIRMED'", Long.class);
         return new Stats(new MatchCounts(total, Collections.unmodifiableMap(byStatus)),
                 new ParticipantCounts(participantTotal));
     }

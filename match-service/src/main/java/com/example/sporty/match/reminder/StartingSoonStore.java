@@ -55,7 +55,7 @@ public class StartingSoonStore {
         return jdbc.queryForList(
                 "SELECT m.id FROM matches m WHERE m.status IN ('RECRUITING','CLOSED') AND"
                     + " m.start_at>? AND m.start_at<=? AND EXISTS (SELECT 1 FROM match_participants"
-                    + " p WHERE p.match_id=m.id AND p.role IN ('OWNER','PARTICIPANT')) AND NOT"
+                    + " p WHERE p.match_id=m.id AND p.participation_status='CONFIRMED' AND p.role IN ('OWNER','PARTICIPANT')) AND NOT"
                     + " EXISTS (SELECT 1 FROM outbox_event o WHERE o.aggregate_id=CONCAT('',m.id)"
                     + " AND o.event_type=?) ORDER BY m.start_at,m.id LIMIT 100",
                 Long.class,
@@ -98,7 +98,7 @@ public class StartingSoonStore {
                             var recipients =
                                     jdbc.queryForList(
                                             "SELECT user_id FROM match_participants WHERE"
-                                                + " match_id=? AND role IN ('OWNER','PARTICIPANT')"
+                                                + " match_id=? AND participation_status='CONFIRMED' AND role IN ('OWNER','PARTICIPANT')"
                                                 + " ORDER BY match_participant_id",
                                             Long.class,
                                             matchId);

@@ -37,6 +37,7 @@ CREATE TABLE match_participants (
   match_id BIGINT NOT NULL,
   user_id BIGINT NOT NULL COMMENT 'user_db.user.id의 논리 참조; FK 없음',
   role VARCHAR(20) NOT NULL,
+  participation_status VARCHAR(20) NOT NULL DEFAULT 'CONFIRMED',
   created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
   PRIMARY KEY (match_participant_id),

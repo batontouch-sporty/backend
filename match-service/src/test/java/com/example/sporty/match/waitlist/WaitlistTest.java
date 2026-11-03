@@ -219,6 +219,16 @@ class WaitlistTest {
     }
 
     @Test
+    void suspendedHeadDoesNotRollBackAnotherParticipantsCancellation() {
+        var m=full(); service.register(m.getId(),3L); service.register(m.getId(),4L);
+        when(checks.activeMember(3L)).thenThrow(new MatchDependencyException(403,"PARTICIPATION_SUSPENDED","정지 중"));
+        participation.leave(m.getId(),2L);
+        assertThat(waitlist.existsByMatch_IdAndUserId(m.getId(),3L)).isFalse();
+        assertThat(participants.existsByMatch_IdAndUserId(m.getId(),2L)).isFalse();
+        assertThat(participants.existsByMatch_IdAndUserId(m.getId(),4L)).isTrue();
+    }
+
+    @Test
     void dependencyOutagePreservesHeadAndRollsBackCancellation() {
         var m = full();
         service.register(m.getId(), 3L);

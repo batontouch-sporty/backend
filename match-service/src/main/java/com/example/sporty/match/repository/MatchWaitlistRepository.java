@@ -12,11 +12,17 @@ import java.util.Optional;
 
 /** Order ties by PK so the first waiting user is deterministic. */
 public interface MatchWaitlistRepository extends JpaRepository<MatchWaitlistEntity, Long> {
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("select w from MatchWaitlistEntity w where w.match.id=?1 order by w.registeredAt,w.id")
+    List<MatchWaitlistEntity> findPriorityRowsForUpdate(Long matchId);
+
     Optional<MatchWaitlistEntity> findFirstByMatch_IdOrderByRegisteredAtAscIdAsc(Long matchId);
 
     Optional<MatchWaitlistEntity> findByMatch_IdAndUserId(Long matchId, Long userId);
 
     List<MatchWaitlistEntity> findAllByUserId(Long userId);
+
+    List<MatchWaitlistEntity> findAllByUserIdAndRegisteredAtLessThanEqual(Long userId,Instant registeredAt);
 
     boolean existsByMatch_IdAndUserId(Long matchId, Long userId);
 

@@ -26,6 +26,7 @@ class ParticipationSagaConfigurationTest {
                 .withBean(JdbcTemplate.class, () -> mock(JdbcTemplate.class))
                 .withBean(ObjectMapper.class, ObjectMapper::new)
                 .withBean(WaitlistPromotion.class, () -> mock(WaitlistPromotion.class))
+                .withBean(com.example.sporty.match.deposit.DepositSaga.class, () -> mock(com.example.sporty.match.deposit.DepositSaga.class))
                 .withBean(
                         PlatformTransactionManager.class,
                         () -> mock(PlatformTransactionManager.class))

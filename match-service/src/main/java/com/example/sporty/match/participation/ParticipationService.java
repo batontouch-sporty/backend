@@ -20,6 +20,8 @@ public class ParticipationService {
     private final MemberLocks locks;
     private final ParticipationEvents events;
     private final WaitlistPromotion promotion;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.example.sporty.match.deposit.DepositSaga deposits;
 
     public ParticipationService(
             MatchRepository matches,
@@ -37,7 +39,11 @@ public class ParticipationService {
     }
 
     public record Participation(
-            Long matchParticipantId, Long matchId, Long userId, MatchParticipantRole role) {}
+            Long matchParticipantId, Long matchId, Long userId, MatchParticipantRole role, String requestId) {
+        public Participation(Long participantId,Long matchId,Long userId,MatchParticipantRole role) {
+            this(participantId,matchId,userId,role,null);
+        }
+    }
 
     /** Same member -> match lock order as withdrawal; capacity check and insertion are atomic. */
     @Transactional
@@ -49,19 +55,27 @@ public class ParticipationService {
         var match =
                 matches.findByIdForUpdate(matchId)
                         .orElseThrow(() -> problem(404, "MATCH_NOT_FOUND", "매치를 찾을 수 없습니다."));
+        var previous = participants.findByMatch_IdAndUserId(matchId,userId);
+        if (deposits.isEnabled() && previous.isPresent() && previous.get().getParticipationStatus()==ParticipationStatus.PENDING)
+            throw problem(409,"PARTICIPATION_IN_PROGRESS","이미 처리 중인 참가 요청입니다.");
         if (participants.existsByMatch_IdAndUserId(matchId, userId))
             throw problem(409, "MATCH_ALREADY_JOINED", "이미 참가 중인 매치입니다.");
         if (match.getStatus() != MatchStatus.RECRUITING)
             throw problem(400, "MATCH_RECRUITMENT_CLOSED", "모집이 마감된 매치입니다.");
+        if (deposits.isEnabled() && deposits.hasWaitlistPriority(matchId))
+            throw problem(400,"MATCH_RECRUITMENT_CLOSED","대기자 승급 처리 중인 매치입니다.");
         if (!match.getStartAt().isAfter(now()))
             throw problem(400, "MATCH_ALREADY_STARTED", "이미 시작된 매치입니다.");
         if (participants.countByMatch_Id(matchId) >= match.getMaxParticipant())
             throw problem(400, "MATCH_FULL", "매치 정원이 가득 찼습니다.");
         checks.checkParticipantGender(member, match.getGenderGroup().name());
-        var participant =
-                participants.saveAndFlush(
-                        new MatchParticipantEntity(
-                                match, userId, MatchParticipantRole.PARTICIPANT));
+        var participant = previous.orElseGet(() -> new MatchParticipantEntity(match,userId,MatchParticipantRole.PARTICIPANT));
+        if (deposits.isEnabled()) {
+            var accepted=deposits.begin(participant,"JOIN");
+            return new Participation(participant.getId(),matchId,userId,participant.getRole(),accepted.requestId());
+        }
+        participant.confirm();
+        participants.saveAndFlush(participant);
         long current = participants.countByMatch_Id(matchId);
         events.joined(match, userId, current);
         if (current >= match.getMaxParticipant()) {
@@ -94,12 +108,18 @@ public class ParticipationService {
                                                 "매치 참가 정보를 찾을 수 없습니다."));
         if (participant.getRole() == MatchParticipantRole.OWNER)
             throw problem(403, "MATCH_OWNER_CANNOT_LEAVE", "방장은 참가 취소할 수 없습니다.");
-        participants.delete(participant);
+        if (deposits.isEnabled()) {
+            if(!match.getStartAt().isAfter(now())) throw problem(400,"MATCH_ALREADY_STARTED","이미 시작된 매치입니다.");
+            if(!java.util.Set.of(ParticipationStatus.PENDING,ParticipationStatus.CONFIRMED).contains(participant.getParticipationStatus()))
+                throw problem(404,"MATCH_PARTICIPANT_NOT_FOUND","매치 참가 정보를 찾을 수 없습니다.");
+            deposits.cancel(participant,"PARTICIPANT_CANCELLED");
+        } else participants.delete(participant);
         participants.flush();
         promotion.promote(matchId);
         var now = now();
         if (match.getStatus() == MatchStatus.CLOSED
                 && match.getStartAt().isAfter(now)
+                && (!deposits.isEnabled() || !deposits.hasWaitlistPriority(matchId))
                 && participants.countByMatch_Id(matchId) < match.getMaxParticipant()) {
             match.reopenRecruitment(now);
             events.statusChanged(match, MatchStatus.CLOSED, "참가 취소로 모집 재개");

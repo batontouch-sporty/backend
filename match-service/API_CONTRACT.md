@@ -53,3 +53,6 @@ DELETE의 권한·기록 보존·수신자·중복 요청 방지와 CLOSED 상�
 20. detail remains available
 21. cancelled match retained in participant history
 22. default search hides cancelled match
+# R10 포인트 Saga 변경 (작업 브랜치)
+
+생성·참가 202 접수, 본인 요청 상태 조회, CONFIRMED 기준 조회, 참가 취소 시 비동기 보증금 반환 계약은 [POINT_SAGA.md](POINT_SAGA.md)를 따른다. 아래 기존 API 기록과 달라진 항목은 R10 적용 시 새 계약으로 전환한다. PR #111 및 회원·포인트 코드와 함께 적용하며, 기존 R8 환경에는 이 변경만 배포하지 않는다.

@@ -1,17 +1,19 @@
 #!/usr/bin/env bash
 # Docker Hub 이미지로 sporty 네임스페이스에 배포한다.
-# 사용법: k8s/deploy.sh <DOCKERHUB_NAMESPACE> <TAG>
+# 사용법: k8s/deploy.sh <DOCKERHUB_NAMESPACE> <TAG> [FRONTEND_TAG]
+# 태그는 커밋 sha 7자리를 쓴다. 프론트는 저장소가 달라 태그가 다르면 세 번째 인자로 준다(생략 시 TAG).
 # kustomization.yaml은 고치지 않고, 임시 overlay에서 이미지 이름·태그만 바꿔 적용한다.
 set -euo pipefail
 
-if [ "$#" -ne 2 ]; then
-  echo "사용법: $0 <DOCKERHUB_NAMESPACE> <TAG>" >&2
-  echo "예: $0 batontouch 1a2b3c4" >&2
+if [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then
+  echo "사용법: $0 <DOCKERHUB_NAMESPACE> <TAG> [FRONTEND_TAG]" >&2
+  echo "예: $0 batontouch 1a2b3c4 9f8e7d6" >&2
   exit 1
 fi
 
 REGISTRY_NS="$1"
 TAG="$2"
+FRONTEND_TAG="${3:-$TAG}"
 NS=sporty
 K8S_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROLLOUT_TIMEOUT="${ROLLOUT_TIMEOUT:-300s}"
@@ -59,10 +61,15 @@ cp -R "$K8S_DIR" "$TMP/base"
   done
   echo "  - name: sporty-frontend"
   echo "    newName: ${REGISTRY_NS}/sporty-frontend"
-  echo "    newTag: \"${TAG}\""
+  echo "    newTag: \"${FRONTEND_TAG}\""
 } > "$TMP/kustomization.yaml"
 
 kubectl apply -k "$TMP"
+
+# imagePullPolicy가 IfNotPresent라 latest를 다시 적용하면 새 이미지를 받지 않는다. 그때만 다시 띄운다.
+if [ "$TAG" = latest ] || [ "$FRONTEND_TAG" = latest ]; then
+  kubectl -n "$NS" rollout restart deployment
+fi
 
 # Discovery·Config가 먼저 준비돼야 나머지가 설정을 받고 등록된다.
 for app in "${APPS[@]}"; do
@@ -72,7 +79,7 @@ kubectl -n "$NS" rollout status deployment/zipkin --timeout="$ROLLOUT_TIMEOUT"
 kubectl -n "$NS" rollout status deployment/frontend --timeout="$ROLLOUT_TIMEOUT"
 
 echo
-echo "배포 완료: ${REGISTRY_NS}/sporty-*:${TAG}"
+echo "배포 완료: ${REGISTRY_NS}/sporty-*-service:${TAG}, ${REGISTRY_NS}/sporty-frontend:${FRONTEND_TAG}"
 echo "노드 사설 IP:"
 kubectl get nodes -o jsonpath='{range .items[*]}  {.metadata.name} {.status.addresses[?(@.type=="InternalIP")].address}{"\n"}{end}'
 echo "접속 주소 (워커 공인 IP 기준):"

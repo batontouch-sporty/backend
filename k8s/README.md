@@ -201,7 +201,7 @@ EC2 4대: k8s-master(t3.medium), k8s-worker 2대(t3.large, kubeadm), infra(t3.la
 | --- | --- | --- |
 | 30000 | 프론트(`frontend` NodePort) | 시연 접속 대역 (필요하면 0.0.0.0/0) |
 | 30080 | Gateway API(`gateway-nodeport`) | 시연 접속 대역 |
-| 30100~30199 | 관리 포트(`*-metrics`, `/actuator/prometheus`) | infra EC2 사설 IP만 |
+| 30100~30199 | 관리 포트(`*-metrics`, `/actuator/prometheus`) | infra EC2 사설 IP만. master·worker 보안 그룹 모두 같은 규칙 |
 
 관리 포트 NodePort는 다음과 같다. Gateway만 관리 포트가 따로 있고, 업무 서비스는 서비스 포트에서 Actuator를 함께 연다.
 
@@ -252,7 +252,7 @@ kubectl -n sporty create secret generic ai-service-secret \
 ③ master에서 배포 스크립트를 실행한다. `kustomization.yaml`은 고치지 않고 임시 overlay에서 이미지 이름·태그만 바꾼다. ConfigMap이나 필수 Secret이 없으면 적용 전에 멈춘다. rollout 대기 시간은 `ROLLOUT_TIMEOUT`(기본 `300s`)으로 바꿀 수 있다.
 
 ```bash
-bash k8s/deploy.sh <DOCKERHUB_NAMESPACE> <TAG>
+bash k8s/deploy.sh <DOCKERHUB_NAMESPACE> <TAG> [FRONTEND_TAG]
 ```
 
 ④ 접속을 확인한다.
@@ -267,4 +267,10 @@ curl -fsS http://<워커-사설-IP>:30181/actuator/prometheus | head
 
 ### 대체 경로
 
-K8s 구성이 막히면 infra를 t3.xlarge로 올려 단일 서버 Compose로 전체를 띄운다. 절차는 backend 이슈 #135를 따른다.
+K8s 구성이 막히면 infra를 t3.xlarge로 올려 단일 서버 Compose로 전체를 띄운다. 절차는 `deploy/README.md`(단일 서버 배포)를 따른다.
+
+### 배포 전 확인
+
+- 태그는 커밋 sha 7자리를 쓴다. 백엔드와 프론트는 저장소가 달라 태그가 다르면 `FRONTEND_TAG`를 따로 준다. `latest`로 배포하면 스크립트가 모든 Deployment를 다시 띄운다.
+- Docker Hub 저장소 `sporty-*`가 공개(Public)인지 확인한다. 비공개면 워커가 pull하지 못한다(imagePullSecret 없음).
+- 업무 서비스 5개의 `*-metrics` NodePort(30181~30185)는 관리 포트가 따로 없어 업무 API 포트를 그대로 연다. 서비스는 Gateway가 넣은 `X-User-Id`를 믿으므로, 이 포트는 보안 그룹에서 infra EC2만 허용하고 외부에는 절대 열지 않는다.

@@ -7,8 +7,8 @@ x-app-env: &app-env
   JAVA_TOOL_OPTIONS: "-Duser.timezone=Asia/Seoul"
   CONFIG_SERVER_URL: http://config-service:8888
   # Spring Cloud Bus 계정. config-service와 서비스 6개가 같은 값을 쓴다.
-  RABBITMQ_USER: &rabbitmq-user ${RABBITMQ_USER:?RABBITMQ_USER가 필요하다. .env.example을 본다}
-  RABBITMQ_PASSWORD: &rabbitmq-password ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD가 필요하다. .env.example을 본다}
+  RABBITMQ_USER: &rabbitmq-user ${RABBITMQ_USER:-guest}
+  RABBITMQ_PASSWORD: &rabbitmq-password ${RABBITMQ_PASSWORD:-guest}
 
 x-app: &app
   environment: *app-env

@@ -88,10 +88,13 @@ docker compose -f docker-compose.yml -f deploy/single/compose.yml up -d --wait
 방법 2: A에서 쌓은 데이터를 이어서 쓴다. B를 **한 번도 띄우지 않은 상태**에서만 쓴다. 이미 B를 띄운 적이 있으면 먼저 `docker compose -f docker-compose.yml -f deploy/single/compose.yml down -v`로 B의 DB를 지운 뒤 진행한다(B 데이터는 사라진다).
 
 ```bash
-docker volume ls -q | grep -x sporty_mariadb-data && echo "B의 DB 볼륨이 이미 있다. 위 안내대로 먼저 지운다" && exit 1
-docker volume create sporty_mariadb-data
-docker run --rm -v sporty-infra_mariadb-data:/from -v sporty_mariadb-data:/to alpine sh -c "cp -a /from/. /to/"
-docker compose -f docker-compose.yml -f deploy/single/compose.yml up -d --wait
+if docker volume inspect sporty_mariadb-data >/dev/null 2>&1; then
+  echo "B의 DB 볼륨이 이미 있다. 위 안내대로 먼저 지운다"
+else
+  docker volume create sporty_mariadb-data
+  docker run --rm -v sporty-infra_mariadb-data:/from -v sporty_mariadb-data:/to alpine sh -c "cp -a /from/. /to/"
+  docker compose -f docker-compose.yml -f deploy/single/compose.yml up -d --wait
+fi
 ```
 
 - B로 전환한 뒤 A로 되돌아가려면 B를 `down`(볼륨 유지)으로 내리고 A를 다시 올린다. A의 DB는 1단계에서 남겨 둔 그대로다.

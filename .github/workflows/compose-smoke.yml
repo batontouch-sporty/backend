@@ -26,7 +26,8 @@ jobs:
       - name: 시험용 .env 생성
         run: |
           for name in MARIADB_ROOT_PASSWORD USER_APP_PASSWORD MATCH_APP_PASSWORD \
-                      FACILITY_APP_PASSWORD NOTIFICATION_APP_PASSWORD GRAFANA_ADMIN_PASSWORD; do
+                      FACILITY_APP_PASSWORD NOTIFICATION_APP_PASSWORD GRAFANA_ADMIN_PASSWORD \
+                      RABBITMQ_USER RABBITMQ_PASSWORD; do
             echo "$name=$(openssl rand -hex 16)"
           done > .env
           echo "JWT_SECRET_KEY=$(openssl rand -hex 32)" >> .env

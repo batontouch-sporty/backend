@@ -271,6 +271,6 @@ K8s 구성이 막히면 infra를 t3.xlarge로 올려 단일 서버 Compose로 �
 
 ### 배포 전 확인
 
-- 태그는 커밋 sha 7자리를 쓴다. 백엔드와 프론트는 저장소가 달라 태그가 다르면 `FRONTEND_TAG`를 따로 준다. `latest`는 `IfNotPresent`라 새 이미지를 받지 않아 스크립트가 거부한다.
+- 태그는 커밋 sha 7자리를 쓴다. 백엔드와 프론트는 저장소가 달라 태그가 다르면 `FRONTEND_TAG`를 따로 준다. `IfNotPresent`라 같은 태그를 다시 쓰면 새 이미지를 받지 않으므로, 스크립트는 sha 7자리가 아닌 태그(`latest` 등)를 거부한다.
 - Docker Hub 저장소 `sporty-*`가 공개(Public)인지 확인한다. 비공개면 워커가 pull하지 못한다(imagePullSecret 없음).
 - 업무 서비스 5개의 `*-metrics` NodePort(30181~30185)는 관리 포트가 따로 없어 업무 API 포트를 그대로 연다. 서비스는 Gateway가 넣은 `X-User-Id`를 믿으므로, 이 포트는 보안 그룹에서 infra EC2만 허용하고 외부에는 절대 열지 않는다.

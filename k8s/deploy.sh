@@ -14,9 +14,9 @@ fi
 REGISTRY_NS="$1"
 TAG="$2"
 FRONTEND_TAG="${3:-$TAG}"
-# imagePullPolicy가 IfNotPresent라 latest처럼 같은 이름에 내용이 바뀌는 태그는 새 이미지를 받지 않는다. 커밋 태그만 받는다.
-if [ "$TAG" = latest ] || [ "$FRONTEND_TAG" = latest ]; then
-  echo "[멈춤] latest 대신 커밋 sha 7자리 태그를 준다." >&2
+# imagePullPolicy가 IfNotPresent라 latest처럼 같은 이름에 내용이 바뀌는 태그는 새 이미지를 받지 않는다. 커밋 sha 7자리만 받는다.
+if ! [[ "$TAG" =~ ^[0-9a-f]{7}$ && "$FRONTEND_TAG" =~ ^[0-9a-f]{7}$ ]]; then
+  echo "[멈춤] 태그는 커밋 sha 7자리(소문자 16진수)만 받는다. latest 같은 태그는 쓰지 않는다." >&2
   exit 1
 fi
 NS=sporty

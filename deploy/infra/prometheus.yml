@@ -1,0 +1,32 @@
+# infra EC2용. monitoring/prometheus.yml을 복사했고 다른 점은 sporty-services job뿐이다.
+# 루트는 Compose 서비스 이름을 고정으로 수집하고, 여기서는 K8s NodePort를 file_sd로 읽는다.
+# 기존 job·rule·라벨을 바꾸면 두 파일을 같이 고친다.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/alert-rules.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: kafka-exporter
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["kafka-exporter:9308"]
+
+  - job_name: sporty-services
+    metrics_path: /actuator/prometheus
+    # 대상 라벨은 up에도 application을 붙인다. 지표의 같은 태그가 exported_application으로 바뀌지 않게 한다.
+    honor_labels: true
+    file_sd_configs:
+      # 파일을 고치면 재시작 없이 다시 읽는다.
+      - files: ["/etc/prometheus/targets/*.json"]

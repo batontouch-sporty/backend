@@ -1,0 +1,55 @@
+# 단일 서버 전체 배포(K8s 대체안). 루트 docker-compose.yml 위에 얹는 오버레이다.
+# 실행: 저장소 루트에서 docker compose -f docker-compose.yml -f deploy/single/compose.yml up -d --wait
+# 경로·.env는 첫 파일(루트) 기준으로 읽는다.
+#
+# 루트와 다른 점
+# - 앱은 빌드하지 않고 Docker Hub 이미지를 받는다.
+# - 프론트(nginx) 컨테이너를 추가한다. API는 nginx가 gateway-service로 넘긴다.
+# - 외부 공개는 80(프론트), 8000(API), 3001(Grafana)만. 나머지는 루트대로 127.0.0.1에만 열린다.
+#   보안 그룹에서 80·8000은 시연 대상, 3001은 팀 IP만 허용한다.
+
+x-hub: &hub
+  build: !reset null
+
+services:
+  discovery-service:
+    <<: *hub
+    image: ${DOCKERHUB_NAMESPACE:?DOCKERHUB_NAMESPACE가 필요하다}/sporty-discovery-service:${IMAGE_TAG:?IMAGE_TAG가 필요하다}
+  config-service:
+    <<: *hub
+    image: ${DOCKERHUB_NAMESPACE:?}/sporty-config-service:${IMAGE_TAG:?}
+  gateway-service:
+    <<: *hub
+    image: ${DOCKERHUB_NAMESPACE:?}/sporty-gateway-service:${IMAGE_TAG:?}
+    ports: !override
+      - "8000:8000"
+  user-service:
+    <<: *hub
+    image: ${DOCKERHUB_NAMESPACE:?}/sporty-user-service:${IMAGE_TAG:?}
+  match-service:
+    <<: *hub
+    image: ${DOCKERHUB_NAMESPACE:?}/sporty-match-service:${IMAGE_TAG:?}
+  facility-service:
+    <<: *hub
+    image: ${DOCKERHUB_NAMESPACE:?}/sporty-facility-service:${IMAGE_TAG:?}
+  ai-service:
+    <<: *hub
+    image: ${DOCKERHUB_NAMESPACE:?}/sporty-ai-service:${IMAGE_TAG:?}
+  notification-service:
+    <<: *hub
+    image: ${DOCKERHUB_NAMESPACE:?}/sporty-notification-service:${IMAGE_TAG:?}
+
+  frontend:
+    # 프론트는 저장소가 달라 태그가 다를 수 있다. 비우면 IMAGE_TAG를 쓴다.
+    image: ${DOCKERHUB_NAMESPACE:?}/sporty-frontend:${FRONTEND_IMAGE_TAG:-${IMAGE_TAG:?}}
+    environment:
+      GATEWAY_UPSTREAM: gateway-service:8000
+    ports:
+      - "80:80"
+    depends_on:
+      gateway-service:
+        condition: service_healthy
+
+  grafana:
+    ports: !override
+      - "${GRAFANA_HOST_PORT:-3001}:3000"

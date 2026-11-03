@@ -2,10 +2,14 @@ package com.example.sporty.match.participation;
 
 import com.example.sporty.match.withdrawal.MemberLockTimeoutException;
 
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
+// MatchFallbackAdvice(가장 낮음)보다 먼저 돈다
+@Order(Ordered.LOWEST_PRECEDENCE - 1)
 @RestControllerAdvice(assignableTypes = {ParticipationController.class, WaitlistController.class, com.example.sporty.match.deposit.DepositController.class})
 public class ParticipationAdvice {
     public record Error(String code, String message) {}

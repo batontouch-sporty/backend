@@ -11,6 +11,9 @@ spring:
           uri: https://github.com/batontouch-sporty/config-repo
           default-label: main
 
+# {cipher} 복호화 키(encrypt.key-store.*)는 ENCRYPT_KEYSTORE_LOCATION·_PASSWORD·_ALIAS·_SECRET 환경변수로만 받는다.
+# 값이 없으면 암호화 없이 기동한다. 여기에 ${...:} 자리를 두면 빈 값도 키가 있는 것으로 보므로 두지 않는다. 절차는 README.md.
+
 eureka:
   instance:
     instance-id: ${spring.application.name}:${spring.cloud.client.ip-address}:${server.port}

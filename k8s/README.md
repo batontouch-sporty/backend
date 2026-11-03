@@ -126,7 +126,7 @@ Mac에서 만든 로컬 이미지는 별도 VM의 Kubernetes 노드로 자동 �
 | Secret `user-service-secret`, `match-service-secret`, `facility-service-secret`, `notification-service-secret` | 각각 `USER_APP_PASSWORD`, `MATCH_APP_PASSWORD`, `FACILITY_APP_PASSWORD`, `NOTIFICATION_APP_PASSWORD` | 인프라 MariaDB의 서비스별 계정과 일치해야 한다. 기존 DB 초기화 스크립트를 기준으로 스키마와 권한을 준비한다. |
 | 선택 키 | Facility Secret의 `PUBLIC_DATA_API_KEY`, AI Secret `ai-service-secret`의 `OPENAI_API_KEY` | 키가 필요한 외부 기능용이다. 시연용 관리자 계정이 필요하면 User Secret에 `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NICKNAME`을 추가한다. |
 
-로컬 Compose의 호스트 바인딩과 Kafka advertised listener를 인프라 EC2의 사설 네트워크에 맞춘다. Kafka가 알려주는 브로커 주소에도 워커 Pod에서 접근할 수 있어야 한다. `PROMETHEUS_URL`은 Gateway가 관리자 쿼리를 보낼 주소다. 인프라 EC2에서 앱 메트릭을 수집할 경로 및 타깃은 별도로 구성한다.
+로컬 Compose의 호스트 바인딩과 Kafka advertised listener를 인프라 EC2의 사설 네트워크에 맞춘다. Kafka가 알려주는 브로커 주소에도 워커 Pod에서 접근할 수 있어야 한다. `PROMETHEUS_URL`은 Gateway가 관리자 쿼리를 보낼 주소다. 인프라 EC2에서 앱 메트릭을 수집할 경로 및 타깃은 `deploy/README.md`의 infra EC2 절차(`deploy/infra/prometheus.yml`, `targets/k8s-targets.json`)로 구성한다.
 
 DB를 쓰는 4개 앱은 `MARIADB_HOST`, Kafka를 쓰는 User·Match·Notification은 `KAFKA_BOOTSTRAP_SERVERS`를 Pod에 주입한다. prod 설정이 이 이름을 그대로 참조한다. Match의 탈퇴 리스너는 Deployment에 명시한 `MATCH_WITHDRAWAL_ENABLED="true"`로 활성화한다.
 
@@ -214,7 +214,7 @@ EC2 4대: k8s-master(t3.medium), k8s-worker 2대(t3.large, kubeadm), infra(t3.la
 | `ai-metrics` | 8084 | 30184 |
 | `notification-metrics` | 8085 | 30185 |
 
-워커 쪽에서 infra EC2의 3306·6379·9092·9090을 쓸 수 있게 infra 보안 그룹은 워커 사설 IP를 허용한다. infra의 Prometheus 수집 타깃은 `<워커-사설-IP>:<NodePort>`, 경로는 `/actuator/prometheus`다.
+워커 쪽에서 infra EC2의 3306·6379·9092·9090을 쓸 수 있게 infra 보안 그룹은 워커 사설 IP를 허용한다. infra의 Prometheus 수집 타깃은 `<워커-사설-IP>:<NodePort>`, 경로는 `/actuator/prometheus`다. 로컬 Compose용 `monitoring/prometheus.yml`은 그대로 두고, infra 전용 설정 `deploy/infra/prometheus.yml`이 `deploy/infra/targets/k8s-targets.json`(file_sd)을 읽는다. 예시 파일을 복사해 IP를 채우면 재시작 없이 다시 읽고, Prometheus `/targets`에서 여섯 대상이 UP인지 확인한다.
 
 ### 순서
 
@@ -271,6 +271,6 @@ K8s 구성이 막히면 infra를 t3.xlarge로 올려 단일 서버 Compose로 �
 
 ### 배포 전 확인
 
-- 태그는 커밋 sha 7자리를 쓴다. 백엔드와 프론트는 저장소가 달라 태그가 다르면 `FRONTEND_TAG`를 따로 준다. `latest`로 배포하면 스크립트가 모든 Deployment를 다시 띄운다.
+- 태그는 커밋 sha 7자리를 쓴다. 백엔드와 프론트는 저장소가 달라 태그가 다르면 `FRONTEND_TAG`를 따로 준다. `latest`는 `IfNotPresent`라 새 이미지를 받지 않아 스크립트가 거부한다.
 - Docker Hub 저장소 `sporty-*`가 공개(Public)인지 확인한다. 비공개면 워커가 pull하지 못한다(imagePullSecret 없음).
 - 업무 서비스 5개의 `*-metrics` NodePort(30181~30185)는 관리 포트가 따로 없어 업무 API 포트를 그대로 연다. 서비스는 Gateway가 넣은 `X-User-Id`를 믿으므로, 이 포트는 보안 그룹에서 infra EC2만 허용하고 외부에는 절대 열지 않는다.

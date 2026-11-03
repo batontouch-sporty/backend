@@ -14,6 +14,11 @@ fi
 REGISTRY_NS="$1"
 TAG="$2"
 FRONTEND_TAG="${3:-$TAG}"
+# imagePullPolicy가 IfNotPresent라 latest처럼 같은 이름에 내용이 바뀌는 태그는 새 이미지를 받지 않는다. 커밋 태그만 받는다.
+if [ "$TAG" = latest ] || [ "$FRONTEND_TAG" = latest ]; then
+  echo "[멈춤] latest 대신 커밋 sha 7자리 태그를 준다." >&2
+  exit 1
+fi
 NS=sporty
 K8S_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROLLOUT_TIMEOUT="${ROLLOUT_TIMEOUT:-300s}"
@@ -65,11 +70,6 @@ cp -R "$K8S_DIR" "$TMP/base"
 } > "$TMP/kustomization.yaml"
 
 kubectl apply -k "$TMP"
-
-# imagePullPolicy가 IfNotPresent라 latest를 다시 적용하면 새 이미지를 받지 않는다. 그때만 다시 띄운다.
-if [ "$TAG" = latest ] || [ "$FRONTEND_TAG" = latest ]; then
-  kubectl -n "$NS" rollout restart deployment
-fi
 
 # Discovery·Config가 먼저 준비돼야 나머지가 설정을 받고 등록된다.
 for app in "${APPS[@]}"; do

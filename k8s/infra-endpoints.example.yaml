@@ -1,0 +1,19 @@
+# 배포 입력 예시. kustomization resources에 넣지 않는다.
+# 복사해서 <...> 자리만 실제 값으로 바꾼 뒤 kubectl apply -f 로 만든다. 복사본은 Git에 올리지 않는다.
+# 비밀번호·키는 여기 넣지 않고 README의 kubectl create secret 명령으로 만든다.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sporty-infra-endpoints
+  namespace: sporty
+  labels:
+    app.kubernetes.io/component: infra-endpoints
+    app.kubernetes.io/part-of: sporty
+data:
+  MARIADB_HOST: "<infra-사설-IP>"
+  MARIADB_HOST_PORT: "3306"
+  REDIS_HOST: "<infra-사설-IP>"
+  REDIS_HOST_PORT: "6379"
+  KAFKA_BOOTSTRAP_SERVERS: "<infra-사설-IP>:9092"
+  CORS_ALLOWED_ORIGIN: "http://<워커-공인-IP>:30000"
+  PROMETHEUS_URL: "http://<infra-사설-IP>:9090"

@@ -17,6 +17,7 @@ resources:
   - match-service.yaml
   - gateway-deployment.yaml
   - gateway-service.yaml
+  - gateway-nodeport.yaml
   - user-deployment.yaml
   - user-service.yaml
   - facility-deployment.yaml
@@ -28,6 +29,9 @@ resources:
   - tracing-configmap.yaml
   - zipkin-deployment.yaml
   - zipkin-service.yaml
+  - frontend-deployment.yaml
+  - frontend-service.yaml
+  - monitoring-nodeport.yaml
 
 images:
   - name: sporty-discovery-service
@@ -53,4 +57,7 @@ images:
     newTag: k8s-draft
   - name: sporty-notification-service
     newName: sporty-notification-service
+    newTag: k8s-draft
+  - name: sporty-frontend
+    newName: sporty-frontend
     newTag: k8s-draft

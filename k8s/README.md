@@ -19,6 +19,11 @@
 | `app-client-configmap.yaml` | Gateway와 업무 서비스 5개에 prod 프로필, Config Server 및 Eureka URL, probe 설정을 제공한다. |
 | `{config,gateway,user,match,facility,ai,notification}-deployment.yaml` | 각 서비스 Pod의 이미지, 포트, probe, 자원 및 환경변수를 선언한다. |
 | `{config,gateway,user,match,facility,ai,notification}-service.yaml` | 각 앱을 같은 이름의 ClusterIP Service로 연결한다. |
+| `gateway-nodeport.yaml` | 외부 API 진입점. Gateway 8000을 NodePort 30080으로 연다. ClusterIP `gateway-service`는 그대로 둔다. |
+| `frontend-deployment.yaml`, `frontend-service.yaml` | 프론트 nginx Pod와 NodePort 30000. nginx는 `GATEWAY_UPSTREAM=gateway-service:8000`으로 API를 넘긴다. |
+| `monitoring-nodeport.yaml` | infra EC2 Prometheus가 긁을 관리 포트 NodePort 6개(30101, 30181~30185). |
+| `infra-endpoints.example.yaml` | `sporty-infra-endpoints` ConfigMap 예시. 자리표시만 있고 `resources`에 넣지 않는다. |
+| `deploy.sh` | Docker Hub 네임스페이스·태그로 이미지를 바꿔 적용하고 rollout을 기다린다. |
 
 Gateway는 API 포트 8000과 내부 관리 포트 8001을 구분한다. Config는 8888, User·Match·Facility·AI·Notification은 차례로 8081~8085를 사용한다. 외부 API 진입점을 구성할 때는 Gateway의 8000만 연결한다.
 
@@ -121,7 +126,7 @@ Mac에서 만든 로컬 이미지는 별도 VM의 Kubernetes 노드로 자동 �
 | Secret `user-service-secret`, `match-service-secret`, `facility-service-secret`, `notification-service-secret` | 각각 `USER_APP_PASSWORD`, `MATCH_APP_PASSWORD`, `FACILITY_APP_PASSWORD`, `NOTIFICATION_APP_PASSWORD` | 인프라 MariaDB의 서비스별 계정과 일치해야 한다. 기존 DB 초기화 스크립트를 기준으로 스키마와 권한을 준비한다. |
 | 선택 키 | Facility Secret의 `PUBLIC_DATA_API_KEY`, AI Secret `ai-service-secret`의 `OPENAI_API_KEY` | 키가 필요한 외부 기능용이다. 시연용 관리자 계정이 필요하면 User Secret에 `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NICKNAME`을 추가한다. |
 
-로컬 Compose의 호스트 바인딩과 Kafka advertised listener를 인프라 EC2의 사설 네트워크에 맞춘다. Kafka가 알려주는 브로커 주소에도 워커 Pod에서 접근할 수 있어야 한다. `PROMETHEUS_URL`은 Gateway가 관리자 쿼리를 보낼 주소다. 인프라 EC2에서 앱 메트릭을 수집할 경로 및 타깃은 별도로 구성한다.
+로컬 Compose의 호스트 바인딩과 Kafka advertised listener를 인프라 EC2의 사설 네트워크에 맞춘다. Kafka가 알려주는 브로커 주소에도 워커 Pod에서 접근할 수 있어야 한다. `PROMETHEUS_URL`은 Gateway가 관리자 쿼리를 보낼 주소다. 인프라 EC2에서 앱 메트릭을 수집할 경로 및 타깃은 `deploy/README.md`의 infra EC2 절차(`deploy/infra/prometheus.yml`, `targets/k8s-targets.json`)로 구성한다.
 
 DB를 쓰는 4개 앱은 `MARIADB_HOST`, Kafka를 쓰는 User·Match·Notification은 `KAFKA_BOOTSTRAP_SERVERS`를 Pod에 주입한다. prod 설정이 이 이름을 그대로 참조한다. Match의 탈퇴 리스너는 Deployment에 명시한 `MATCH_WITHDRAWAL_ENABLED="true"`로 활성화한다.
 
@@ -185,3 +190,87 @@ done
 4. `kubectl -n sporty exec deploy/match-service -- printenv MATCH_WITHDRAWAL_ENABLED`가 `true`인지 확인한다. 테스트 계정의 탈퇴 요청에 대해 동일한 Saga가 `CLEANED` 또는 정상적인 거절 사유가 있는 `REJECTED`로 끝나는지 확인한다. HTTP 202는 접수 결과다.
 
 각 단계에서는 담당 서비스의 API 및 Kafka 이벤트 계약을 변경하지 않고, 필요한 환경 설정과 운영 전제만 별도 합의한다.
+
+## AWS 배포 절차
+
+EC2 4대: k8s-master(t3.medium), k8s-worker 2대(t3.large, kubeadm), infra(t3.large, Compose로 MariaDB·Kafka·Redis·모니터링). 이미지는 Docker Hub `<네임스페이스>/sporty-<svc>-service:<태그>`, 프론트는 `<네임스페이스>/sporty-frontend:<태그>`다. 외부 접속은 NodePort + 보안 그룹으로 한다.
+
+### 보안 그룹 포트
+
+| 포트 | 대상 | 허용 출처 |
+| --- | --- | --- |
+| 30000 | 프론트(`frontend` NodePort) | 시연 접속 대역 (필요하면 0.0.0.0/0) |
+| 30080 | Gateway API(`gateway-nodeport`) | 시연 접속 대역 |
+| 30100~30199 | 관리 포트(`*-metrics`, `/actuator/prometheus`) | infra EC2 사설 IP만. master·worker 보안 그룹 모두 같은 규칙 |
+
+관리 포트 NodePort는 다음과 같다. Gateway만 관리 포트가 따로 있고, 업무 서비스는 서비스 포트에서 Actuator를 함께 연다.
+
+| Service | 컨테이너 포트 | NodePort |
+| --- | --- | --- |
+| `gateway-metrics` | 8001 | 30101 |
+| `user-metrics` | 8081 | 30181 |
+| `match-metrics` | 8082 | 30182 |
+| `facility-metrics` | 8083 | 30183 |
+| `ai-metrics` | 8084 | 30184 |
+| `notification-metrics` | 8085 | 30185 |
+
+워커 쪽에서 infra EC2의 3306·6379·9092·9090을 쓸 수 있게 infra 보안 그룹은 워커 사설 IP를 허용한다. infra의 Prometheus 수집 타깃은 `<워커-사설-IP>:<NodePort>`, 경로는 `/actuator/prometheus`다. 로컬 Compose용 `monitoring/prometheus.yml`은 그대로 두고, infra 전용 설정 `deploy/infra/prometheus.yml`이 `deploy/infra/targets/k8s-targets.json`(file_sd)을 읽는다. 예시 파일을 복사해 IP를 채우면 재시작 없이 다시 읽고, Prometheus `/targets`에서 여섯 대상이 UP인지 확인한다.
+
+### 순서
+
+① infra EC2에서 Compose를 기동한다. MariaDB·Redis·Kafka·Prometheus 포트를 사설 IP에 바인딩하고, Kafka `EXTERNAL` advertised listener를 `<infra-사설-IP>:9092`로 맞춘다.
+
+② master에서 Namespace, ConfigMap, Secret을 만든다. ConfigMap은 예시 파일을 복사해 자리표시를 바꾼다. 복사본과 비밀값은 Git에 올리지 않는다.
+
+```bash
+kubectl apply -f k8s/namespace.yaml
+
+cp k8s/infra-endpoints.example.yaml /tmp/infra-endpoints.yaml
+# /tmp/infra-endpoints.yaml의 <...> 자리를 실제 값으로 바꾼다
+kubectl apply -f /tmp/infra-endpoints.yaml
+
+# = 뒤에 값을 넣는다. 셸 기록에 남지 않게 명령 앞에 공백을 두거나 실행 후 기록을 지운다.
+kubectl -n sporty create secret generic sporty-jwt \
+  --from-literal=JWT_SECRET_KEY=
+kubectl -n sporty create secret generic user-service-secret \
+  --from-literal=USER_APP_PASSWORD=
+kubectl -n sporty create secret generic match-service-secret \
+  --from-literal=MATCH_APP_PASSWORD=
+kubectl -n sporty create secret generic facility-service-secret \
+  --from-literal=FACILITY_APP_PASSWORD= \
+  --from-literal=PUBLIC_DATA_API_KEY=
+kubectl -n sporty create secret generic notification-service-secret \
+  --from-literal=NOTIFICATION_APP_PASSWORD=
+# 선택: AI 키, 시연용 관리자 계정
+kubectl -n sporty create secret generic ai-service-secret \
+  --from-literal=OPENAI_API_KEY=
+# user-service-secret에 ADMIN_EMAIL·ADMIN_PASSWORD·ADMIN_NICKNAME을 함께 넣을 수 있다 (--from-literal 추가)
+```
+
+`PUBLIC_DATA_API_KEY`, `ai-service-secret`, `ADMIN_*`는 Deployment에서 `optional: true`라 없어도 Pod는 뜬다. 나머지는 없으면 Pod가 `CreateContainerConfigError`로 멈춘다.
+
+③ master에서 배포 스크립트를 실행한다. `kustomization.yaml`은 고치지 않고 임시 overlay에서 이미지 이름·태그만 바꾼다. ConfigMap이나 필수 Secret이 없으면 적용 전에 멈춘다. rollout 대기 시간은 `ROLLOUT_TIMEOUT`(기본 `300s`)으로 바꿀 수 있다.
+
+```bash
+bash k8s/deploy.sh <DOCKERHUB_NAMESPACE> <TAG> [FRONTEND_TAG]
+```
+
+④ 접속을 확인한다.
+
+```bash
+kubectl -n sporty get deploy,pods,svc
+curl -fsS -o /dev/null -w "front %{http_code}\n" http://<워커-공인-IP>:30000/
+curl -fsS http://<워커-공인-IP>:30080/user-service/actuator/health
+# infra EC2에서
+curl -fsS http://<워커-사설-IP>:30181/actuator/prometheus | head
+```
+
+### 대체 경로
+
+K8s 구성이 막히면 infra를 t3.xlarge로 올려 단일 서버 Compose로 전체를 띄운다. 절차는 `deploy/README.md`(단일 서버 배포)를 따른다.
+
+### 배포 전 확인
+
+- 태그는 커밋 sha 7자리를 쓴다. 백엔드와 프론트는 저장소가 달라 태그가 다르면 `FRONTEND_TAG`를 따로 준다. `IfNotPresent`라 같은 태그를 다시 쓰면 새 이미지를 받지 않으므로, 스크립트는 sha 7자리가 아닌 태그(`latest` 등)를 거부한다.
+- Docker Hub 저장소 `sporty-*`가 공개(Public)인지 확인한다. 비공개면 워커가 pull하지 못한다(imagePullSecret 없음).
+- 업무 서비스 5개의 `*-metrics` NodePort(30181~30185)는 관리 포트가 따로 없어 업무 API 포트를 그대로 연다. 서비스는 Gateway가 넣은 `X-User-Id`를 믿으므로, 이 포트는 보안 그룹에서 infra EC2만 허용하고 외부에는 절대 열지 않는다.

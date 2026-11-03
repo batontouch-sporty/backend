@@ -220,8 +220,11 @@ class DepositSagaTest {
     }
     @Test void suspensionEventClearsWaitingButKeepsConfirmedMatches() {
         long m=ready(2); participation.join(m,2L); charged(id(m,2)); waiting.register(m,3L);
+        // registered_at is DB time rounded to microseconds and can be up to 0.5us ahead of a later
+        // JVM now(). Use the stored value itself so the inclusive boundary is tested deterministically.
+        var registeredAt=waitlist.findAllByUserId(3L).get(0).getRegisteredAt();
         var event=mapper.createObjectNode().put("eventId",UUID.randomUUID().toString()).put("requestId",UUID.randomUUID().toString())
-            .put("userId",3).put("matchId",m).put("occurredAt",OffsetDateTime.now().toString())
+            .put("userId",3).put("matchId",m).put("occurredAt",registeredAt.atOffset(ZoneOffset.UTC).toString())
             .put("suspendedUntil",OffsetDateTime.now().plusDays(7).toString());
         saga.handle("user.participation-suspended.v1",event);
         assertThat(waitlist.findAllByUserId(3L)).isEmpty(); assertThat(participants.countByMatch_Id(m)).isEqualTo(2);

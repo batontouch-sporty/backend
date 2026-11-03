@@ -17,6 +17,7 @@ import com.example.sporty.user.withdrawal.repository.ProcessedEventRepository;
 import com.example.sporty.user.withdrawal.repository.WithdrawalSagaRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import feign.RetryableException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Limit;
 import org.springframework.stereotype.Service;
@@ -133,26 +134,32 @@ public class WithdrawalSagaService {
         LocalDateTime afterDeadline = LocalDateTime.of(1970, 1, 1, 0, 0);
         String afterId = "";
         int count = 0;
-        while (true) {
-            List<Object[]> batch = sagaRepository.findExpiredAfter(
-                    SagaStatus.PROCESSING, before, afterDeadline, afterId, Limit.of(TIMEOUT_BATCH));
-            for (Object[] row : batch) {
-                String sagaId = (String) row[0];
-                afterId = sagaId;
-                afterDeadline = (LocalDateTime) row[1];
-                // 원격 조회는 트랜잭션 밖에서 하고, 반영은 한 건씩 짧은 트랜잭션으로 커밋한다(한 건 실패가 다른 건을 막지 않게).
-                String result = matchResult(sagaId);
-                if (result == null) {
-                    continue;
+        try {
+            while (true) {
+                List<Object[]> batch = sagaRepository.findExpiredAfter(
+                        SagaStatus.PROCESSING, before, afterDeadline, afterId, Limit.of(TIMEOUT_BATCH));
+                for (Object[] row : batch) {
+                    String sagaId = (String) row[0];
+                    afterId = sagaId;
+                    afterDeadline = (LocalDateTime) row[1];
+                    // 원격 조회는 트랜잭션 밖에서 하고, 반영은 한 건씩 짧은 트랜잭션으로 커밋한다(한 건 실패가 다른 건을 막지 않게).
+                    String result = matchResult(sagaId);
+                    if (result == null) {
+                        continue;
+                    }
+                    Boolean done = transaction.execute(status -> timeOutOne(sagaId, before, result));
+                    if (Boolean.TRUE.equals(done)) {
+                        count++;
+                    }
                 }
-                Boolean done = transaction.execute(status -> timeOutOne(sagaId, before, result));
-                if (Boolean.TRUE.equals(done)) {
-                    count++;
+                if (batch.size() < TIMEOUT_BATCH) {
+                    return count;
                 }
             }
-            if (batch.size() < TIMEOUT_BATCH) {
-                return count;
-            }
+        } catch (MatchUnavailable e) {
+            // match에 닿지 않으면(연결 실패·타임아웃) 남은 건도 같은 결과라 이번 주기를 멈춘다.
+            // 같은 스케줄러 스레드의 Outbox 발행을 오래 막지 않기 위해서다. 남은 건은 다음 주기에 다시 묻는다.
+            return count;
         }
     }
 
@@ -175,12 +182,21 @@ public class WithdrawalSagaService {
             }
             log.warn("탈퇴 Saga 결과 조회 응답이 요청과 맞지 않거나 알 수 없어 다음 주기에 재확인: sagaId={}, response={}",
                     sagaId, response);
+        } catch (RetryableException e) {
+            log.warn("match-service에 연결하지 못해 이번 주기 시간 초과 확인을 멈춤: sagaId={}, error={}",
+                    sagaId, e.toString());
+            metrics.resultCheckFailed();
+            throw new MatchUnavailable();
         } catch (RuntimeException e) {
             log.warn("탈퇴 Saga 결과 조회 실패, WITHDRAWING 유지 후 다음 주기에 재확인: sagaId={}, error={}",
                     sagaId, e.toString());
         }
         metrics.resultCheckFailed();
         return null;
+    }
+
+    // match 연결 실패로 이번 주기의 시간 초과 확인을 멈출 때 쓴다.
+    private static class MatchUnavailable extends RuntimeException {
     }
 
     private boolean timeOutOne(String sagaId, LocalDateTime before, String result) {

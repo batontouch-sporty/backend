@@ -348,6 +348,27 @@ class WithdrawalSagaTest {
         assertThat(sagas.findById(saga.getSagaId()).orElseThrow().getStatus()).isEqualTo(SagaStatus.CLEANED);
     }
 
+    // match에 연결하지 못하면(RetryableException) 이번 주기를 멈추고 다음 주기에 다시 확인한다
+    @Test
+    void connectionFailureStopsTheCycleEarly() {
+        UserEntity first = user(UserStatus.ACTIVE);
+        WithdrawalSagaEntity firstSaga = accept(first);
+        UserEntity second = user(UserStatus.ACTIVE);
+        WithdrawalSagaEntity secondSaga = accept(second);
+        doThrow(org.mockito.Mockito.mock(feign.RetryableException.class)).when(matchClient)
+                .result(anyString(), any(), anyString(), anyString());
+
+        at(T0.plus(Duration.ofMinutes(6)));
+        assertThat(sagaService.timeOutExpired()).isZero();
+        verify(matchClient, org.mockito.Mockito.times(1)).result(anyString(), any(), anyString(), anyString());
+        assertThat(sagas.findById(firstSaga.getSagaId()).orElseThrow().getStatus()).isEqualTo(SagaStatus.PROCESSING);
+        assertThat(sagas.findById(secondSaga.getSagaId()).orElseThrow().getStatus()).isEqualTo(SagaStatus.PROCESSING);
+
+        matchSays("CLEANED");
+        assertThat(sagaService.timeOutExpired()).isEqualTo(2);
+        assertThat(users.findById(second.getId()).orElseThrow().getStatus()).isEqualTo(UserStatus.WITHDRAWN);
+    }
+
     // 앞의 50건이 계속 조회 실패해도 51번째는 같은 주기에 확인한다(커서 순회)
     @Test
     void failingLookupsDoNotStarveLaterSagas() {

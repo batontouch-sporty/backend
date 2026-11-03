@@ -7,7 +7,7 @@ Push-Location (Join-Path $PSScriptRoot '../..')
 try {
     # Restore port overrides when the script finishes.
     $settings = @{
-        GATEWAY_HOST_PORT='18090'; MARIADB_HOST_PORT='13316'; REDIS_HOST_PORT='16389'
+        CONFIG_HOST_PORT='18888'; GATEWAY_HOST_PORT='18090'; MARIADB_HOST_PORT='13316'; REDIS_HOST_PORT='16389'
         KAFKA_HOST_PORT='19092'; ZIPKIN_HOST_PORT='19411'; PROMETHEUS_HOST_PORT='19090'
         GRAFANA_HOST_PORT='13001'; ALERTMANAGER_HOST_PORT='19093'
     }
@@ -38,10 +38,25 @@ try {
         $previous[$key] = [Environment]::GetEnvironmentVariable($key)
         [Environment]::SetEnvironmentVariable($key, $settings[$key])
     }
+    $run = Join-Path $PSScriptRoot '.run'
+    New-Item -ItemType Directory -Force -Path $run | Out-Null
+    $override = Join-Path $run 'test.compose.yml'
+    # Test-only overrides: no team notifications or external facility synchronization.
+    @'
+services:
+  alertmanager:
+    environment:
+      DISCORD_WEBHOOK_URL: ''
+  facility-service:
+    environment:
+      PUBLIC_DATA_API_KEY: ''
+      FACILITY_SYNC_ON_STARTUP: 'false'
+'@ | Set-Content -Encoding utf8 $override
+    $composeArgs = @('-p', 'sporty-k6-90', '-f', 'docker-compose.yml', '-f', $override)
     if ($Action -eq 'up') {
-        docker compose -p sporty-k6-90 up -d --build --wait gateway-service user-service match-service facility-service notification-service prometheus grafana zipkin
+        docker compose @composeArgs up -d --build --wait --wait-timeout 300 gateway-service user-service match-service facility-service notification-service kafka-exporter prometheus grafana zipkin alertmanager
     } else {
-        docker compose -p sporty-k6-90 down --volumes
+        docker compose @composeArgs down --volumes
     }
     if ($LASTEXITCODE -ne 0) { throw "Compose $Action failed" }
     if ($Action -eq 'up') {

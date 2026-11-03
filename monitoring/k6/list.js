@@ -8,14 +8,14 @@ export const options = {
   scenarios: {
     list: smoke
       ? { executor: 'shared-iterations', vus: 1, iterations: 1 }
-      : { executor: 'constant-vus', vus: 100, duration: '60s' },
+      : { executor: 'constant-vus', vus: Number(__ENV.LIST_VUS || 100), duration: __ENV.LIST_DURATION || '60s' },
   },
   thresholds: { checks: ['rate==1'], http_req_failed: ['rate==0'] },
 };
 
 /** Check that A10 returns a nonempty list, pacing requests during the load scenario. */
 export default function () {
-  const response = http.get(base + '/match-service/api/matches');
+  const response = http.get(base + '/match-service/api/matches', { timeout: '15s' });
   check(response, {
     /** Reject malformed JSON and empty responses even when the server reports success. */
     'A10 returns a nonempty match list': (r) => {

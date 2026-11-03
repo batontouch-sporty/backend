@@ -128,4 +128,32 @@ class MockLlmTest {
         assertThat(MockLlm.time("오전 10시 풋살")).isEqualTo(LocalTime.of(10, 0));
         assertThat(MockLlm.time("토요일 저녁 7시 농구 10명")).isEqualTo(LocalTime.of(19, 0));
     }
+
+    @Test
+    void 지역명_반포의_반은_30분으로_읽지_않는다() {
+        assertThat(MockLlm.time("내일 저녁 7시 반포에서 농구")).isEqualTo(LocalTime.of(19, 0));
+        assertThat(MockLlm.time("내일 저녁 7시 반 반포에서 농구")).isEqualTo(LocalTime.of(19, 30));
+        assertThat(MockLlm.time("내일 저녁 7시반 농구")).isEqualTo(LocalTime.of(19, 30));
+    }
+
+    @Test
+    void 잘못된_분은_00시로_바꾸지_않고_시작_일시를_비운다() throws Exception {
+        assertThat(MockLlm.time("내일 저녁 7시 60분 농구")).isNull();
+        assertThat(MockLlm.hasInvalidTime("내일 저녁 7시 60분 농구")).isTrue();
+        assertThat(MockLlm.hasInvalidTime("내일 농구")).isFalse();
+
+        JsonNode invalid = read(mock.draft("내일 저녁 7시 60분 송파에서 농구"));
+        JsonNode noTime = read(mock.draft("내일 송파에서 농구"));
+
+        assertThat(invalid.get("startAt").isNull()).isTrue();
+        assertThat(noTime.get("startAt").asText()).endsWith("T00:00:00");
+    }
+
+    @Test
+    void 오전_12시는_자정_오후_12시는_정오() {
+        assertThat(MockLlm.time("내일 오전 12시 농구")).isEqualTo(LocalTime.MIDNIGHT);
+        assertThat(MockLlm.time("내일 오후 12시 농구")).isEqualTo(LocalTime.NOON);
+        assertThat(MockLlm.time("내일 낮 12시 농구")).isEqualTo(LocalTime.NOON);
+        assertThat(MockLlm.time("내일 12시 농구")).isEqualTo(LocalTime.NOON);
+    }
 }

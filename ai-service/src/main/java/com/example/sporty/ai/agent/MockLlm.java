@@ -37,7 +37,8 @@ import lombok.extern.slf4j.Slf4j;
 public class MockLlm {
 
     // "저녁 7시", "7시 30분", "7시 반"
-    private static final Pattern HOUR = Pattern.compile("(오전|오후|아침|낮|저녁|밤)?\\s*(\\d{1,2})\\s*시(?:\\s*(\\d{1,2})\\s*분|\\s*(반))?");
+    // "반"은 뒤에 한글이 이어지지 않을 때만 30분으로 본다("7시 반포" → 19:00).
+    private static final Pattern HOUR = Pattern.compile("(오전|오후|아침|낮|저녁|밤)?\\s*(\\d{1,2})\\s*시(?:\\s*(\\d{1,2})\\s*분|\\s*(반)(?![가-힣]))?");
     private static final Pattern PEOPLE = Pattern.compile("(\\d{1,3})\\s*명");
     private static final Pattern CANDIDATE = Pattern.compile("^- id=(\\d+) \\| ([^|]*) \\| ([^|]*) \\|", Pattern.MULTILINE);
     private static final int RECOMMEND_SIZE = 3;
@@ -133,6 +134,10 @@ public class MockLlm {
         if (date == null) {
             return null;
         }
+        if (hasInvalidTime(prompt)) {
+            // "7시 60분"처럼 잘못 말한 시각은 00:00으로 바꾸지 않고 비워 둔다(사용자가 폼에서 입력).
+            return null;
+        }
         LocalTime time = time(prompt);
         return date.atTime(time == null ? LocalTime.MIDNIGHT : time);
     }
@@ -183,19 +188,38 @@ public class MockLlm {
         return null;
     }
 
+    // 시각을 말하지 않았거나 잘못 말했으면 null. 둘의 구분은 hasInvalidTime으로 한다.
     static LocalTime time(String prompt) {
+        int[] hourMinute = hourMinute(prompt);
+        return hourMinute == null || !isValid(hourMinute) ? null : LocalTime.of(hourMinute[0], hourMinute[1]);
+    }
+
+    // 시각을 말했는데 범위를 벗어남(예: 7시 60분, 25시)
+    static boolean hasInvalidTime(String prompt) {
+        int[] hourMinute = hourMinute(prompt);
+        return hourMinute != null && !isValid(hourMinute);
+    }
+
+    private static boolean isValid(int[] hourMinute) {
+        return hourMinute[0] >= 0 && hourMinute[0] <= 23 && hourMinute[1] >= 0 && hourMinute[1] <= 59;
+    }
+
+    // [시, 분]. 오전·아침 12시 → 0시, 오후·저녁·밤 1~11시 → +12, 밤 12시 → 0시, 낮 1~5시 → +12
+    private static int[] hourMinute(String prompt) {
         Matcher matcher = HOUR.matcher(prompt == null ? "" : prompt);
         if (!matcher.find()) {
             return null;
         }
         int hour = Integer.parseInt(matcher.group(2));
         String part = matcher.group(1);
-        boolean afternoon = part != null && (part.equals("오후") || part.equals("저녁") || part.equals("밤") || part.equals("낮") && hour < 6);
-        if (afternoon && hour < 12) {
+        if (part != null && hour == 12 && (part.equals("오전") || part.equals("아침") || part.equals("밤"))) {
+            hour = 0;
+        } else if (part != null && hour < 12
+                && (part.equals("오후") || part.equals("저녁") || part.equals("밤") || part.equals("낮") && hour < 6)) {
             hour += 12;
         }
         int minute = matcher.group(3) != null ? Integer.parseInt(matcher.group(3)) : matcher.group(4) != null ? 30 : 0;
-        return hour <= 23 && minute <= 59 ? LocalTime.of(hour, minute) : null;
+        return new int[] {hour, minute};
     }
 
     // 성별 구성: 실제 프롬프트처럼 문장에 있을 때만 채운다.

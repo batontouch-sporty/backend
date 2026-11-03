@@ -214,11 +214,18 @@ class MatchLifecycleTest {
                 .contentType("application/json").content("{\"attendance\":\"NO_SHOW\"}"))
             .andExpect(status().isOk()).andExpect(jsonPath("$.participantId").value(p))
             .andExpect(jsonPath("$.userId").value(2)).andExpect(jsonPath("$.attendance").value("NO_SHOW"));
-        mvc.perform(get("/api/matches/"+m)).andExpect(status().isOk())
+        mvc.perform(get("/api/matches/"+m).header("X-User-Id","1")).andExpect(status().isOk())
             .andExpect(jsonPath("$.participants[1].participantId").value(p))
             .andExpect(jsonPath("$.participants[1].attendance").value("NO_SHOW"))
             .andExpect(jsonPath("$.participants[0].attendance").value("ATTENDED"))
             .andExpect(jsonPath("$.participants[0].role").value("OWNER"));
+        for(String viewer:new String[]{null,"2","99"}) {
+            var req=get("/api/matches/"+m); if(viewer!=null) req=req.header("X-User-Id",viewer);
+            mvc.perform(req).andExpect(status().isOk())
+                .andExpect(jsonPath("$.participants[1].participantId").value(p))
+                .andExpect(jsonPath("$.participants[1].attendance").doesNotExist())
+                .andExpect(jsonPath("$.participants[0].attendance").doesNotExist());
+        }
         jdbc.update("UPDATE matches SET end_at=? WHERE id=?",now.minusMinutes(1),m);
         lifecycle.advance(m);
         assertThat(outbox(MatchLifecycle.SETTLEMENT)).filteredOn(n->n.path("userId").asLong()==2)

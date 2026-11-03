@@ -303,6 +303,12 @@ public class MatchCrudService {
         var rows = participants.findAllByMatch_IdOrderByIdAsc(m.getId());
         var profiles =
                 checks.profiles(rows.stream().map(MatchParticipantEntity::getUserId).toList());
+        // Attendance is visible to the match owner only; participantId stays public.
+        boolean ownerView =
+                viewer != null
+                        && rows.stream()
+                                .anyMatch(p -> p.getUserId().equals(viewer)
+                                        && p.getRole() == MatchParticipantRole.OWNER);
         var people =
                 rows.stream()
                         .map(
@@ -314,7 +320,7 @@ public class MatchCrudService {
                                             p == null ? null : p.imageUrl(),
                                             row.getRole(),
                                             row.getId(),
-                                            row.getMatchParticipantStatus());
+                                            ownerView ? row.getMatchParticipantStatus() : null);
                                 })
                         .toList();
         return new MatchDtos.Detail(

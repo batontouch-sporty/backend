@@ -4,6 +4,12 @@ server:
 spring:
   application:
     name: config-service
+  # Spring Cloud Bus. Compose는 RABBITMQ_HOST=rabbitmq를, K8s는 infra EC2 주소를 환경변수로 준다.
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
   cloud:
     config:
       server:
@@ -26,3 +32,5 @@ management:
         include:
           - health
           - info
+          # 설정 새로고침은 여기서만 연다. config-service는 Gateway 라우트가 없어 외부에서 부를 수 없다.
+          - busrefresh

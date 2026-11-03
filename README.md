@@ -40,6 +40,31 @@ docker compose up -d --wait mariadb redis kafka zipkin config-service
 
 DB 스키마는 MariaDB 볼륨이 비어 있을 때만 `docker/mariadb/`의 스크립트로 만들어집니다. 기존 볼륨이 있으면 `docker compose down -v`로 지운 뒤 다시 올립니다(DB 데이터가 모두 삭제됩니다).
 
+## 설정 새로고침 (Spring Cloud Bus)
+
+config-repo 값을 바꾼 뒤 config-service에 `POST /actuator/busrefresh`를 한 번 보내면 RabbitMQ를 거쳐 서비스 6개(gateway·user·match·facility·ai·notification)가 재시작 없이 설정을 다시 읽습니다. `busrefresh`는 config-service에만 열려 있고 Gateway 라우트가 없어 외부에서 부를 수 없습니다.
+
+- RabbitMQ 계정은 `.env`의 `RABBITMQ_USER`·`RABBITMQ_PASSWORD`입니다(비어 있으면 Compose가 기동하지 않습니다). 관리 화면은 [http://localhost:15672](http://localhost:15672)입니다.
+- 로그 레벨(`logging.level.*`)과 `@ConfigurationProperties` 값은 바로 바뀝니다. DB 연결·포트처럼 기동 때만 읽는 값은 재시작해야 바뀝니다.
+
+로그 레벨로 확인하는 순서입니다(코드 변경 없음).
+
+```bash
+# 1. 지금 값 확인 (Gateway는 Actuator 포트가 8001이다)
+docker compose exec user-service curl -s localhost:8081/actuator/loggers/com.example.sporty
+# {"configuredLevel":"INFO","effectiveLevel":"INFO"}
+
+# 2. config-repo application.yml의 logging.level.com.example.sporty를 DEBUG로 바꿔 main에 머지한다
+
+# 3. 새로고침 한 번 (204)
+curl -i -X POST http://localhost:8888/actuator/busrefresh
+
+# 4. 다시 확인하면 DEBUG. 서비스를 재시작하지 않았다
+docker compose exec user-service curl -s localhost:8081/actuator/loggers/com.example.sporty
+```
+
+되돌릴 때는 줄을 지우지 말고 `INFO`로 바꿔 다시 새로고침합니다. 지운 키는 이전 레벨이 그대로 남습니다.
+
 ## Zipkin 로컬 실행
 
 처음 실행할 때는 예시 파일을 복사해 로컬 환경변수 파일을 준비합니다. 기존 `.env`가 있다면 덮어쓰지 말고 `ZIPKIN_HOST_PORT=9411`만 추가합니다. `JWT_SECRET_KEY`가 비어 있으면 `openssl rand -base64 48`의 출력값을 직접 넣습니다. `.env`는 Git에 커밋하지 않습니다.

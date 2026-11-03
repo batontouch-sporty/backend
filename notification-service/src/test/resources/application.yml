@@ -6,6 +6,9 @@ spring:
   cloud:
     config:
       enabled: false
+    # RabbitMQ 없이 돈다. Bus 새로고침은 Compose에서 확인한다.
+    bus:
+      enabled: false
     discovery:
       enabled: false
   datasource:

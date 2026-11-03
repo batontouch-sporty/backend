@@ -18,6 +18,7 @@ import org.springframework.stereotype.Component;
 
 import com.example.sporty.ai.domain.dto.AiSearchConditionDto;
 import com.example.sporty.ai.domain.enums.District;
+import com.example.sporty.ai.domain.enums.GenderGroup;
 import com.example.sporty.ai.util.KeywordConditionExtractor;
 import com.example.sporty.ai.util.PromptDateTable;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -61,6 +62,7 @@ public class MockLlm {
         AiSearchConditionDto keyword = KeywordConditionExtractor.extract(prompt);
         LocalDateTime startAt = startAt(prompt);
         Integer people = people(prompt);
+        GenderGroup gender = gender(prompt);
         if (keyword.getSportType() == null && keyword.getRegion() == null && startAt == null && people == null) {
             return "어떤 매치를 만들고 싶으신가요?";
         }
@@ -69,21 +71,24 @@ public class MockLlm {
         draft.put("region", keyword.getRegion());
         draft.put("startAt", startAt);
         draft.put("maxParticipant", people);
+        draft.put("genderGroup", gender);
         draft.put("title", title(keyword));
         draft.put("description", "함께 운동할 분을 모집해요. 일정과 장소를 확인하고 편하게 참여해 주세요.");
         return toJson(draft);
     }
 
-    // A22 검색: 종목·자치구 + 날짜 표현(오늘·내일·주말·요일). 아무것도 못 찾으면 안내 문장(→ 400 AI_CONDITION_NOT_FOUND)
+    // A22 검색: 종목·자치구·성별 + 날짜 표현(오늘·내일·모레·요일·이번/다음 주말, 다음 주 요일). 아무것도 못 찾으면 안내 문장(→ 400 AI_CONDITION_NOT_FOUND)
     public String search(String prompt) {
         AiSearchConditionDto keyword = KeywordConditionExtractor.extract(prompt);
         LocalDate[] range = dateRange(prompt);
-        if (keyword.isEmpty() && range == null) {
+        GenderGroup gender = gender(prompt);
+        if (keyword.isEmpty() && range == null && gender == null) {
             return "어떤 매치를 찾으시나요?";
         }
         Map<String, Object> condition = new LinkedHashMap<>();
         condition.put("sportType", keyword.getSportType());
         condition.put("region", keyword.getRegion());
+        condition.put("genderGroup", gender);
         if (range != null) {
             condition.put("startAt", range[0].atStartOfDay());
             condition.put("endAt", range[1].atTime(23, 59));
@@ -120,14 +125,15 @@ public class MockLlm {
         return place + sport + " 함께해요";
     }
 
+    // 실제 초안 프롬프트처럼 날짜를 추측하지 않는다. 날짜가 없으면 시각만 있어도 비워 둔다.
+    // 날짜만 있고 시각이 없으면 00:00(실제 프롬프트 규칙 6).
     private static LocalDateTime startAt(String prompt) {
         LocalDate date = day(prompt);
-        LocalTime time = time(prompt);
-        if (date == null && time == null) {
+        if (date == null) {
             return null;
         }
-        LocalDate today = PromptDateTable.today();
-        return (date == null ? today.plusDays(1) : date).atTime(time == null ? LocalTime.MIDNIGHT : time);
+        LocalTime time = time(prompt);
+        return date.atTime(time == null ? LocalTime.MIDNIGHT : time);
     }
 
     // 하루짜리 날짜: 오늘·내일·모레·요일·주말(토요일)
@@ -137,8 +143,14 @@ public class MockLlm {
     }
 
     private static LocalDate[] dateRange(String prompt) {
+        return dateRange(prompt, PromptDateTable.today());
+    }
+
+    static LocalDate[] dateRange(String prompt, LocalDate today) {
         String text = prompt == null ? "" : prompt;
-        LocalDate today = PromptDateTable.today();
+        // "다음 주 토요일", "다음 주말"은 다음 주(월~일)의 날짜다.
+        boolean nextWeek = text.contains("다음 주") || text.contains("다음주");
+        LocalDate nextMonday = today.with(TemporalAdjusters.next(DayOfWeek.MONDAY));
         if (text.contains("오늘")) {
             return new LocalDate[] {today, today};
         }
@@ -151,11 +163,16 @@ public class MockLlm {
         String[] names = {"월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일"};
         for (int i = 0; i < names.length; i++) {
             if (text.contains(names[i])) {
-                LocalDate date = today.with(TemporalAdjusters.nextOrSame(DayOfWeek.of(i + 1)));
+                LocalDate base = nextWeek ? nextMonday : today;
+                LocalDate date = base.with(TemporalAdjusters.nextOrSame(DayOfWeek.of(i + 1)));
                 return new LocalDate[] {date, date};
             }
         }
         if (text.contains("주말")) {
+            if (nextWeek) {
+                LocalDate saturday = nextMonday.plusDays(5);
+                return new LocalDate[] {saturday, saturday.plusDays(1)};
+            }
             if (today.getDayOfWeek() == DayOfWeek.SUNDAY) {
                 return new LocalDate[] {today, today};
             }
@@ -177,6 +194,21 @@ public class MockLlm {
             hour += 12;
         }
         return hour <= 23 ? LocalTime.of(hour, 0) : null;
+    }
+
+    // 성별 구성: 실제 프롬프트처럼 문장에 있을 때만 채운다.
+    private static GenderGroup gender(String prompt) {
+        String text = prompt == null ? "" : prompt;
+        if (text.contains("혼성") || text.contains("남녀")) {
+            return GenderGroup.MIXED;
+        }
+        if (text.contains("여자") || text.contains("여성")) {
+            return GenderGroup.FEMALE;
+        }
+        if (text.contains("남자") || text.contains("남성")) {
+            return GenderGroup.MALE;
+        }
+        return null;
     }
 
     private static Integer people(String prompt) {

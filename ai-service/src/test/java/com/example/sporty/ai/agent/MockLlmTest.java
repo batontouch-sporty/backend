@@ -78,4 +78,33 @@ class MockLlmTest {
 
         assertThat(result.get("matchIds").toString()).isEqualTo("[4,2,3]");
     }
+
+    @Test
+    void 날짜_없이_시각만_있으면_시작_일시를_추측하지_않는다() throws Exception {
+        JsonNode draft = read(mock.draft("저녁 7시 송파에서 농구 10명"));
+
+        assertThat(draft.get("startAt").isNull()).isTrue();
+        assertThat(draft.get("sportType").asText()).isEqualTo("BASKETBALL");
+    }
+
+    @Test
+    void 다음_주_요일과_다음_주말은_다음_주_날짜로_잡는다() {
+        LocalDate tuesday = LocalDate.of(2026, 11, 3);
+
+        assertThat(MockLlm.dateRange("다음 주 토요일 농구", tuesday))
+                .containsExactly(LocalDate.of(2026, 11, 14), LocalDate.of(2026, 11, 14));
+        assertThat(MockLlm.dateRange("다음 주말 풋살", tuesday))
+                .containsExactly(LocalDate.of(2026, 11, 14), LocalDate.of(2026, 11, 15));
+        assertThat(MockLlm.dateRange("토요일 농구", tuesday))
+                .containsExactly(LocalDate.of(2026, 11, 7), LocalDate.of(2026, 11, 7));
+        assertThat(MockLlm.dateRange("이번 주말 풋살", tuesday))
+                .containsExactly(LocalDate.of(2026, 11, 7), LocalDate.of(2026, 11, 8));
+    }
+
+    @Test
+    void 성별만_말해도_검색_조건으로_찾는다() throws Exception {
+        JsonNode condition = read(mock.search("여자만 하는 매치"));
+
+        assertThat(condition.get("genderGroup").asText()).isEqualTo("FEMALE");
+    }
 }

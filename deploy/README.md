@@ -4,7 +4,7 @@ AWS EC2에 올리는 두 가지 구성이다. 기본은 **A. K8s + infra EC2**�
 
 | 구성 | 서버 | 파일 |
 | --- | --- | --- |
-| A. infra EC2 | t3.large 1대 (DB·Redis·Kafka·모니터링). 앱은 K8s(master 1 + worker 2) | `deploy/infra/compose.yml`, `deploy/infra/prometheus.yml` |
+| A. infra EC2 | t3.large 1대 (DB·Redis·Kafka·RabbitMQ·모니터링). 앱은 K8s(master 1 + worker 2) | `deploy/infra/compose.yml`, `deploy/infra/prometheus.yml` |
 | B. 단일 서버 | t3.xlarge 1대에 전체 | 루트 `docker-compose.yml` + `deploy/single/compose.yml` |
 
 두 구성 모두 루트 `docker-compose.yml`의 서비스 정의를 그대로 쓰고 다른 점만 덮어쓴다. 루트 파일과 로컬 실행 방법은 바뀌지 않는다.
@@ -19,6 +19,7 @@ AWS EC2에 올리는 두 가지 구성이다. 기본은 **A. K8s + infra EC2**�
 | `MARIADB_ROOT_PASSWORD`, `USER_APP_PASSWORD`, `MATCH_APP_PASSWORD`, `FACILITY_APP_PASSWORD`, `NOTIFICATION_APP_PASSWORD` | 필수 | 필수 | A에서는 K8s Secret의 앱 비밀번호와 같아야 한다 |
 | `JWT_SECRET_KEY` | 필수 | 필수 | A는 쓰지 않지만 루트 파일 전체를 해석해서 비어 있으면 실패한다 |
 | `GRAFANA_ADMIN_PASSWORD` | 필수 | 필수 | |
+| `RABBITMQ_USER`, `RABBITMQ_PASSWORD` | 필수 | 선택 | Spring Cloud Bus 계정. A는 비어 있으면 실패하고 K8s Secret `sporty-rabbitmq`와 같아야 한다. B는 비우면 `guest`. 서버에서는 `guest`가 아닌 값을 쓴다 |
 | `INFRA_PRIVATE_IP` | 필수 | - | infra EC2 사설 IP |
 | `DOCKERHUB_NAMESPACE`, `IMAGE_TAG` | - | 필수 | 이미지 `<네임스페이스>/sporty-<서비스>-service:<태그>` |
 | `FRONTEND_IMAGE_TAG` | - | 선택 | 비우면 `IMAGE_TAG` |
@@ -38,9 +39,9 @@ docker compose --env-file .env -f deploy/infra/compose.yml config -q
 docker compose --env-file .env -f deploy/infra/compose.yml up -d --wait
 ```
 
-- 루트와 다른 점: DB·Redis·Kafka·Prometheus를 `127.0.0.1` 대신 `INFRA_PRIVATE_IP`에 연다. Kafka는 `EXTERNAL`을 `INFRA_PRIVATE_IP:9092`로 광고한다. Alertmanager는 호스트에 열지 않는다. Grafana는 시연용으로 모든 인터페이스에 연다. 앱·Zipkin·Config·Discovery는 띄우지 않는다(K8s에서 돈다).
+- 루트와 다른 점: DB·Redis·Kafka·RabbitMQ(5672)·Prometheus를 `127.0.0.1` 대신 `INFRA_PRIVATE_IP`에 연다. RabbitMQ 관리 화면 15672는 `127.0.0.1`에만 열어 SSH 터널(`ssh -L 15672:127.0.0.1:15672 <infra>`)로 본다. Kafka는 `EXTERNAL`을 `INFRA_PRIVATE_IP:9092`로 광고한다. Alertmanager는 호스트에 열지 않는다. Grafana는 시연용으로 모든 인터페이스에 연다. 앱·Zipkin·Config·Discovery는 띄우지 않는다(K8s에서 돈다).
 - Prometheus는 `deploy/infra/prometheus.yml`을 쓴다. `sporty-services` job만 Compose 서비스 이름 대신 `targets/*.json`(file_sd)을 읽고, job 이름·`application` 라벨·경보 규칙은 루트와 같다. json을 고치면 재시작 없이 다시 읽는다.
-- K8s 쪽 입력(`k8s/README.md`의 `sporty-infra-endpoints`): `MARIADB_HOST`·`REDIS_HOST`=`INFRA_PRIVATE_IP`, `KAFKA_BOOTSTRAP_SERVERS`=`INFRA_PRIVATE_IP:9092`, `PROMETHEUS_URL`=`http://INFRA_PRIVATE_IP:9090`.
+- K8s 쪽 입력(`k8s/README.md`의 `sporty-infra-endpoints`): `MARIADB_HOST`·`REDIS_HOST`=`INFRA_PRIVATE_IP`, `KAFKA_BOOTSTRAP_SERVERS`=`INFRA_PRIVATE_IP:9092`, `RABBITMQ_HOST`=`INFRA_PRIVATE_IP`, `PROMETHEUS_URL`=`http://INFRA_PRIVATE_IP:9090`.
 - 수집 NodePort: gateway 관리 30101, user 30181, match 30182, facility 30183, ai 30184, notification 30185. 이 Service는 `k8s/monitoring-nodeport.yaml`(PR #137, `kubectl apply -k k8s`에 포함)이 만든다. 확인: `kubectl get svc -n sporty -l app.kubernetes.io/component=metrics`.
 
 ### 보안 그룹 (infra EC2 인바운드)
@@ -50,6 +51,7 @@ docker compose --env-file .env -f deploy/infra/compose.yml up -d --wait
 | 3306 | MariaDB | VPC 내부(워커) |
 | 6379 | Redis | VPC 내부(워커) |
 | 9092 | Kafka | VPC 내부(워커) |
+| 5672 | RabbitMQ (Bus) | VPC 내부(워커) |
 | 9090 | Prometheus (Gateway `/prometheus` 조회) | VPC 내부(워커) |
 | 3001 | Grafana | 팀 IP (시연) |
 | 22 | SSH | 팀 IP |

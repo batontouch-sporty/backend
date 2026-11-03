@@ -24,7 +24,7 @@ K8S_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROLLOUT_TIMEOUT="${ROLLOUT_TIMEOUT:-300s}"
 
 APPS=(discovery config gateway user match facility ai notification)
-SECRETS=(sporty-jwt user-service-secret match-service-secret facility-service-secret notification-service-secret)
+SECRETS=(sporty-jwt sporty-rabbitmq user-service-secret match-service-secret facility-service-secret notification-service-secret)
 
 echo "대상 클러스터: $(kubectl config current-context)"
 
@@ -37,6 +37,9 @@ fi
 if ! kubectl -n "$NS" get configmap sporty-infra-endpoints >/dev/null 2>&1; then
   echo "[없음] ConfigMap sporty-infra-endpoints (예시: k8s/infra-endpoints.example.yaml)" >&2
   missing=1
+elif [ -z "$(kubectl -n "$NS" get configmap sporty-infra-endpoints -o jsonpath='{.data.RABBITMQ_HOST}')" ]; then
+  echo "[없음] ConfigMap sporty-infra-endpoints 의 RABBITMQ_HOST (예시: k8s/infra-endpoints.example.yaml)" >&2
+  missing=1
 fi
 for s in "${SECRETS[@]}"; do
   if ! kubectl -n "$NS" get secret "$s" >/dev/null 2>&1; then
@@ -47,6 +50,10 @@ done
 if [ "$missing" -ne 0 ]; then
   echo "[멈춤] 위 리소스를 k8s/README.md 'AWS 배포 절차' 2단계대로 만든 뒤 다시 실행한다." >&2
   exit 1
+fi
+# 키스토어는 선택이다. 없으면 {cipher} 복호화 없이 기동한다.
+if ! kubectl -n "$NS" get secret config-encrypt-keystore >/dev/null 2>&1; then
+  echo "[안내] Secret config-encrypt-keystore 가 없어 config-service는 암호화 없이 기동한다. prod 설정에 {cipher} 값이 있으면 복호화되지 않는다."
 fi
 
 TMP="$(mktemp -d)"

@@ -32,6 +32,59 @@ spec:
                 name: app-common-config
             - configMapRef:
                 name: config-service-config
+          env:
+            # Spring Cloud Bus(RabbitMQ). infra EC2 주소는 ConfigMap, 계정은 Secret에서 받는다.
+            - name: RABBITMQ_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: sporty-infra-endpoints
+                  key: RABBITMQ_HOST
+            - name: RABBITMQ_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: sporty-infra-endpoints
+                  key: RABBITMQ_PORT
+                  optional: true
+            - name: RABBITMQ_USER
+              valueFrom:
+                secretKeyRef:
+                  name: sporty-rabbitmq
+                  key: RABBITMQ_USER
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sporty-rabbitmq
+                  key: RABBITMQ_PASSWORD
+            # {cipher} 복호화 키. Secret이 없으면 변수가 모두 빠져 암호화 없이 기동한다.
+            # LOCATION도 Secret에서 받는다. LOCATION만 있고 비밀번호가 없으면 config-service가 기동에 실패한다.
+            - name: ENCRYPT_KEYSTORE_LOCATION
+              valueFrom:
+                secretKeyRef:
+                  name: config-encrypt-keystore
+                  key: ENCRYPT_KEYSTORE_LOCATION
+                  optional: true
+            - name: ENCRYPT_KEYSTORE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: config-encrypt-keystore
+                  key: ENCRYPT_KEYSTORE_PASSWORD
+                  optional: true
+            - name: ENCRYPT_KEYSTORE_ALIAS
+              valueFrom:
+                secretKeyRef:
+                  name: config-encrypt-keystore
+                  key: ENCRYPT_KEYSTORE_ALIAS
+                  optional: true
+            - name: ENCRYPT_KEYSTORE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: config-encrypt-keystore
+                  key: ENCRYPT_KEYSTORE_SECRET
+                  optional: true
+          volumeMounts:
+            - name: encrypt-keystore
+              mountPath: /etc/config-keystore
+              readOnly: true
           startupProbe:
             httpGet:
               path: /actuator/health/liveness
@@ -67,4 +120,13 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
+      volumes:
+        # Secret의 config.jks만 파일로 둔다. Secret이 없으면 빈 폴더로 마운트된다.
+        - name: encrypt-keystore
+          secret:
+            secretName: config-encrypt-keystore
+            optional: true
+            items:
+              - key: config.jks
+                path: config.jks
       terminationGracePeriodSeconds: 30

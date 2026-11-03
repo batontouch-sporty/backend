@@ -120,15 +120,21 @@ Mac에서 만든 로컬 이미지는 별도 VM의 Kubernetes 노드로 자동 �
 
 | 리소스 | 필요한 키 | 용도 |
 | --- | --- | --- |
-| ConfigMap `sporty-infra-endpoints` | `MARIADB_HOST`, `REDIS_HOST`, `KAFKA_BOOTSTRAP_SERVERS`, `CORS_ALLOWED_ORIGIN`, `PROMETHEUS_URL` | DB·Redis는 Pod가 접근할 호스트, Kafka는 host:port, Prometheus는 스킴·포트가 있는 URL, CORS는 프론트엔드의 실제 origin이다. |
-| 같은 ConfigMap의 선택 키 | `MARIADB_HOST_PORT`, `REDIS_HOST_PORT` | DB와 Redis의 기본 포트는 3306, 6379다. |
+| ConfigMap `sporty-infra-endpoints` | `MARIADB_HOST`, `REDIS_HOST`, `KAFKA_BOOTSTRAP_SERVERS`, `RABBITMQ_HOST`, `CORS_ALLOWED_ORIGIN`, `PROMETHEUS_URL` | DB·Redis·RabbitMQ는 Pod가 접근할 호스트, Kafka는 host:port, Prometheus는 스킴·포트가 있는 URL, CORS는 프론트엔드의 실제 origin이다. |
+| 같은 ConfigMap의 선택 키 | `MARIADB_HOST_PORT`, `REDIS_HOST_PORT`, `RABBITMQ_PORT` | DB, Redis, RabbitMQ의 기본 포트는 3306, 6379, 5672다. |
 | Secret `sporty-jwt` | `JWT_SECRET_KEY` | Gateway와 User가 같은 서명 키를 사용한다. |
+| Secret `sporty-rabbitmq` | `RABBITMQ_USER`, `RABBITMQ_PASSWORD` | Spring Cloud Bus 계정. infra EC2 `.env`의 같은 키와 값이 같아야 한다. |
+| Secret `config-encrypt-keystore` (선택) | 파일 `config.jks`, `ENCRYPT_KEYSTORE_LOCATION`, `ENCRYPT_KEYSTORE_PASSWORD`, `ENCRYPT_KEYSTORE_ALIAS`, 선택 `ENCRYPT_KEYSTORE_SECRET` | config-service의 `{cipher}` 복호화 키. 없으면 암호화 없이 기동한다. |
 | Secret `user-service-secret`, `match-service-secret`, `facility-service-secret`, `notification-service-secret` | 각각 `USER_APP_PASSWORD`, `MATCH_APP_PASSWORD`, `FACILITY_APP_PASSWORD`, `NOTIFICATION_APP_PASSWORD` | 인프라 MariaDB의 서비스별 계정과 일치해야 한다. 기존 DB 초기화 스크립트를 기준으로 스키마와 권한을 준비한다. |
 | 선택 키 | Facility Secret의 `PUBLIC_DATA_API_KEY`, AI Secret `ai-service-secret`의 `OPENAI_API_KEY` | 키가 필요한 외부 기능용이다. 시연용 관리자 계정이 필요하면 User Secret에 `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NICKNAME`을 추가한다. |
 
 로컬 Compose의 호스트 바인딩과 Kafka advertised listener를 인프라 EC2의 사설 네트워크에 맞춘다. Kafka가 알려주는 브로커 주소에도 워커 Pod에서 접근할 수 있어야 한다. `PROMETHEUS_URL`은 Gateway가 관리자 쿼리를 보낼 주소다. 인프라 EC2에서 앱 메트릭을 수집할 경로 및 타깃은 `deploy/README.md`의 infra EC2 절차(`deploy/infra/prometheus.yml`, `targets/k8s-targets.json`)로 구성한다.
 
 DB를 쓰는 4개 앱은 `MARIADB_HOST`, Kafka를 쓰는 User·Match·Notification은 `KAFKA_BOOTSTRAP_SERVERS`를 Pod에 주입한다. prod 설정이 이 이름을 그대로 참조한다. Match의 탈퇴 리스너는 Deployment에 명시한 `MATCH_WITHDRAWAL_ENABLED="true"`로 활성화한다.
+
+Bus를 쓰는 config-service와 Gateway·업무 서비스 5개는 `RABBITMQ_HOST`·`RABBITMQ_PORT`와 `sporty-rabbitmq`의 계정을 주입받는다. 서비스는 config-repo `<서비스명>-prod.yml`의 `${RABBITMQ_HOST}`, config-service는 자기 `application.yml`이 이 이름을 읽는다.
+
+config-service는 `config-encrypt-keystore`의 `config.jks`를 `/etc/config-keystore`에 읽기 전용으로 마운트하고 나머지 키를 환경변수로 받는다. 볼륨과 환경변수 모두 `optional: true`라 Secret이 없으면 변수가 빠진 채 암호화 없이 기동한다. `ENCRYPT_KEYSTORE_LOCATION`까지 Secret에서 받는 이유는, 위치만 있고 비밀번호가 없으면 Config Server가 키스토어를 읽으려다 기동에 실패하기 때문이다.
 
 ## 실제 배포 전 확인 사항
 
@@ -193,7 +199,7 @@ done
 
 ## AWS 배포 절차
 
-EC2 4대: k8s-master(t3.medium), k8s-worker 2대(t3.large, kubeadm), infra(t3.large, Compose로 MariaDB·Kafka·Redis·모니터링). 이미지는 Docker Hub `<네임스페이스>/sporty-<svc>-service:<태그>`, 프론트는 `<네임스페이스>/sporty-frontend:<태그>`다. 외부 접속은 NodePort + 보안 그룹으로 한다.
+EC2 4대: k8s-master(t3.medium), k8s-worker 2대(t3.large, kubeadm), infra(t3.large, Compose로 MariaDB·Kafka·Redis·RabbitMQ·모니터링). 이미지는 Docker Hub `<네임스페이스>/sporty-<svc>-service:<태그>`, 프론트는 `<네임스페이스>/sporty-frontend:<태그>`다. 외부 접속은 NodePort + 보안 그룹으로 한다.
 
 ### 보안 그룹 포트
 
@@ -202,6 +208,7 @@ EC2 4대: k8s-master(t3.medium), k8s-worker 2대(t3.large, kubeadm), infra(t3.la
 | 30000 | 프론트(`frontend` NodePort) | 시연 접속 대역 (필요하면 0.0.0.0/0) |
 | 30080 | Gateway API(`gateway-nodeport`) | 시연 접속 대역 |
 | 30100~30199 | 관리 포트(`*-metrics`, `/actuator/prometheus`) | infra EC2 사설 IP만. master·worker 보안 그룹 모두 같은 규칙 |
+| 5672 (infra EC2) | RabbitMQ(Bus) | 워커 사설 IP만 |
 
 관리 포트 NodePort는 다음과 같다. Gateway만 관리 포트가 따로 있고, 업무 서비스는 서비스 포트에서 Actuator를 함께 연다.
 
@@ -214,11 +221,11 @@ EC2 4대: k8s-master(t3.medium), k8s-worker 2대(t3.large, kubeadm), infra(t3.la
 | `ai-metrics` | 8084 | 30184 |
 | `notification-metrics` | 8085 | 30185 |
 
-워커 쪽에서 infra EC2의 3306·6379·9092·9090을 쓸 수 있게 infra 보안 그룹은 워커 사설 IP를 허용한다. infra의 Prometheus 수집 타깃은 `<워커-사설-IP>:<NodePort>`, 경로는 `/actuator/prometheus`다. 로컬 Compose용 `monitoring/prometheus.yml`은 그대로 두고, infra 전용 설정 `deploy/infra/prometheus.yml`이 `deploy/infra/targets/k8s-targets.json`(file_sd)을 읽는다. 예시 파일을 복사해 IP를 채우면 재시작 없이 다시 읽고, Prometheus `/targets`에서 여섯 대상이 UP인지 확인한다.
+워커 쪽에서 infra EC2의 3306·6379·9092·5672·9090을 쓸 수 있게 infra 보안 그룹은 워커 사설 IP를 허용한다. infra의 Prometheus 수집 타깃은 `<워커-사설-IP>:<NodePort>`, 경로는 `/actuator/prometheus`다. 로컬 Compose용 `monitoring/prometheus.yml`은 그대로 두고, infra 전용 설정 `deploy/infra/prometheus.yml`이 `deploy/infra/targets/k8s-targets.json`(file_sd)을 읽는다. 예시 파일을 복사해 IP를 채우면 재시작 없이 다시 읽고, Prometheus `/targets`에서 여섯 대상이 UP인지 확인한다.
 
 ### 순서
 
-① infra EC2에서 Compose를 기동한다. MariaDB·Redis·Kafka·Prometheus 포트를 사설 IP에 바인딩하고, Kafka `EXTERNAL` advertised listener를 `<infra-사설-IP>:9092`로 맞춘다.
+① infra EC2에서 Compose를 기동한다. MariaDB·Redis·Kafka·RabbitMQ·Prometheus 포트를 사설 IP에 바인딩하고, Kafka `EXTERNAL` advertised listener를 `<infra-사설-IP>:9092`로 맞춘다.
 
 ② master에서 Namespace, ConfigMap, Secret을 만든다. ConfigMap은 예시 파일을 복사해 자리표시를 바꾼다. 복사본과 비밀값은 Git에 올리지 않는다.
 
@@ -232,6 +239,10 @@ kubectl apply -f /tmp/infra-endpoints.yaml
 # = 뒤에 값을 넣는다. 셸 기록에 남지 않게 명령 앞에 공백을 두거나 실행 후 기록을 지운다.
 kubectl -n sporty create secret generic sporty-jwt \
   --from-literal=JWT_SECRET_KEY=
+# infra EC2 .env의 RABBITMQ_USER·RABBITMQ_PASSWORD와 같은 값
+kubectl -n sporty create secret generic sporty-rabbitmq \
+  --from-literal=RABBITMQ_USER= \
+  --from-literal=RABBITMQ_PASSWORD=
 kubectl -n sporty create secret generic user-service-secret \
   --from-literal=USER_APP_PASSWORD=
 kubectl -n sporty create secret generic match-service-secret \
@@ -245,11 +256,23 @@ kubectl -n sporty create secret generic notification-service-secret \
 kubectl -n sporty create secret generic ai-service-secret \
   --from-literal=OPENAI_API_KEY=
 # user-service-secret에 ADMIN_EMAIL·ADMIN_PASSWORD·ADMIN_NICKNAME을 함께 넣을 수 있다 (--from-literal 추가)
+
+# 선택: {cipher} 복호화 키스토어. 비밀번호는 본인만 읽을 수 있는 임시 파일에 적어 넘기고 바로 지운다.
+# 임시 파일 내용:
+#   ENCRYPT_KEYSTORE_LOCATION=file:/etc/config-keystore/config.jks
+#   ENCRYPT_KEYSTORE_PASSWORD=<키스토어 비밀번호>
+#   ENCRYPT_KEYSTORE_ALIAS=<alias>
+#   ENCRYPT_KEYSTORE_SECRET=<키 비밀번호>   (키스토어 비밀번호와 같으면 이 줄을 뺀다)
+kubectl -n sporty create secret generic config-encrypt-keystore \
+  --from-file=config.jks=<키스토어 경로> \
+  --from-env-file=<임시 파일>
 ```
 
-`PUBLIC_DATA_API_KEY`, `ai-service-secret`, `ADMIN_*`는 Deployment에서 `optional: true`라 없어도 Pod는 뜬다. 나머지는 없으면 Pod가 `CreateContainerConfigError`로 멈춘다.
+키스토어 만드는 방법과 `{cipher}` 값을 config-repo prod 파일에 넣는 순서는 [config-service README](../config-service/README.md#cipher-비밀값-암호화)를 따른다. 클러스터에서 `/encrypt`를 부를 때는 `kubectl -n sporty port-forward svc/config-service 18888:8888`로 연결한 뒤 `http://127.0.0.1:18888/encrypt`에 요청한다. 배포 뒤에 Secret을 만들었으면 `kubectl -n sporty rollout restart deployment/config-service`로 다시 띄워야 키를 읽는다. config-repo에 암호문을 넣고 머지한 뒤에는 그 값을 쓰는 서비스를 재시작한다.
 
-③ master에서 배포 스크립트를 실행한다. `kustomization.yaml`은 고치지 않고 임시 overlay에서 이미지 이름·태그만 바꾼다. ConfigMap이나 필수 Secret이 없으면 적용 전에 멈춘다. rollout 대기 시간은 `ROLLOUT_TIMEOUT`(기본 `300s`)으로 바꿀 수 있다.
+`PUBLIC_DATA_API_KEY`, `ai-service-secret`, `ADMIN_*`, `config-encrypt-keystore`는 Deployment에서 `optional: true`라 없어도 Pod는 뜬다. 나머지는 없으면 Pod가 `CreateContainerConfigError`로 멈춘다.
+
+③ master에서 배포 스크립트를 실행한다. `kustomization.yaml`은 고치지 않고 임시 overlay에서 이미지 이름·태그만 바꾼다. ConfigMap(`RABBITMQ_HOST` 포함)이나 필수 Secret이 없으면 적용 전에 멈추고, `config-encrypt-keystore`가 없으면 암호화 없이 기동한다고 알린다. rollout 대기 시간은 `ROLLOUT_TIMEOUT`(기본 `300s`)으로 바꿀 수 있다.
 
 ```bash
 bash k8s/deploy.sh <DOCKERHUB_NAMESPACE> <TAG> [FRONTEND_TAG]

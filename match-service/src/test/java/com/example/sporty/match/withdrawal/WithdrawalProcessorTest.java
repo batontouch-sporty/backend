@@ -3,6 +3,8 @@ package com.example.sporty.match.withdrawal;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 import com.fasterxml.jackson.databind.*;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -525,6 +527,29 @@ class WithdrawalProcessorTest {
                 .isInstanceOfSatisfying(
                         org.springframework.web.server.ResponseStatusException.class,
                         ex -> assertThat(ex.getStatusCode().value()).isEqualTo(400));
+    }
+
+    // HTTP 응답에서도 마감 전 409·형식 오류 400이 그대로다(MatchFallbackAdvice가 500으로 바꾸지 않는다)
+    @Test
+    void resultApiKeepsStatusOverHttp() throws Exception {
+        var r = request(2);
+        var mvc =
+                org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(api())
+                        .setControllerAdvice(new com.example.sporty.match.MatchFallbackAdvice())
+                        .build();
+        mvc.perform(
+                        get("/internal/withdrawals/{sagaId}", r.sagaId())
+                                .param("userId", "2")
+                                .param("requestEventId", r.eventId())
+                                .param("deadlineAt", r.deadlineAt().toString()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CONFLICT"));
+        mvc.perform(
+                        get("/internal/withdrawals/{sagaId}", r.sagaId())
+                                .param("userId", "2")
+                                .param("requestEventId", r.eventId())
+                                .param("deadlineAt", "not-a-time"))
+                .andExpect(status().isBadRequest());
     }
 
     // 미처리 -> NONE 뒤 같은 요청이 오면 DEADLINE_EXCEEDED로만 거절되고 아무것도 정리되지 않는다

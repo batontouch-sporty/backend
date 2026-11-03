@@ -2,6 +2,8 @@ package com.example.sporty.match.crud;
 
 import com.example.sporty.match.withdrawal.MemberLockTimeoutException;
 
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.BindException;
@@ -9,6 +11,8 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
+// MatchFallbackAdvice(가장 낮음)보다 먼저 돈다
+@Order(Ordered.LOWEST_PRECEDENCE - 1)
 @RestControllerAdvice(assignableTypes = MatchCrudController.class)
 public class MatchCrudAdvice {
     public record Error(String code, String message) {}

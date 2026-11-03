@@ -1,0 +1,104 @@
+name: 이미지 push
+
+# main에 서비스 코드가 들어오면 서비스 8개 이미지를 Docker Hub에 올린다. K8s 워커와 infra EC2가 이 이미지를 받는다.
+# 8개 Dockerfile의 build 스테이지가 같아서 먼저 한 번만 빌드해 GHA 캐시에 넣고, 서비스별 job은 그 캐시를 받아 쓴다.
+# Docker Hub 설정(secrets DOCKERHUB_USERNAME·DOCKERHUB_TOKEN, variables DOCKERHUB_NAMESPACE)이 없으면 건너뛴다.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '*-service/**'
+      - build.gradle
+      - settings.gradle
+      - 'gradle/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: image-push-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Docker Hub 설정 확인
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
+    steps:
+      - name: 자격 증명 확인
+        id: check
+        env:
+          USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          NAMESPACE: ${{ vars.DOCKERHUB_NAMESPACE }}
+        run: |
+          if [ -n "$USERNAME" ] && [ -n "$TOKEN" ] && [ -n "$NAMESPACE" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Docker Hub 설정이 없어 이미지 빌드·push를 건너뜁니다. secrets DOCKERHUB_USERNAME·DOCKERHUB_TOKEN과 variables DOCKERHUB_NAMESPACE를 등록하세요."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  build-stage:
+    name: 공통 build 스테이지 캐시
+    needs: check
+    if: needs.check.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Buildx 준비
+        uses: docker/setup-buildx-action@v3
+
+      - name: build 스테이지 빌드 · 캐시 저장
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: user-service/Dockerfile
+          target: build
+          platforms: linux/amd64
+          push: false
+          cache-from: type=gha,scope=sporty-build
+          cache-to: type=gha,scope=sporty-build,mode=max
+
+  push:
+    name: ${{ matrix.service }}-service 이미지
+    needs: build-stage
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [discovery, config, gateway, user, match, facility, ai, notification]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Buildx 준비
+        uses: docker/setup-buildx-action@v3
+
+      - name: Docker Hub 로그인
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: 커밋 태그 계산
+        id: tag
+        run: echo "sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      # 빌드 context는 저장소 루트다(Dockerfile 주석 참고).
+      - name: 이미지 빌드 · push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.service }}-service/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ vars.DOCKERHUB_NAMESPACE }}/sporty-${{ matrix.service }}-service:${{ steps.tag.outputs.sha }}
+            ${{ vars.DOCKERHUB_NAMESPACE }}/sporty-${{ matrix.service }}-service:latest
+          cache-from: type=gha,scope=sporty-build

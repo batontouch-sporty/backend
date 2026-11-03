@@ -2,6 +2,10 @@ package com.example.sporty.user.withdrawal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -33,6 +37,8 @@ import com.example.sporty.user.users.domain.entity.UserEntity;
 import com.example.sporty.user.users.domain.entity.UserStatus;
 import com.example.sporty.user.users.repository.UserRepository;
 import com.example.sporty.user.users.service.UserService;
+import com.example.sporty.user.withdrawal.client.MatchWithdrawalClient;
+import com.example.sporty.user.withdrawal.client.MatchWithdrawalClient.WithdrawalResult;
 import com.example.sporty.user.withdrawal.domain.entity.OutboxEventEntity;
 import com.example.sporty.user.withdrawal.domain.entity.SagaStatus;
 import com.example.sporty.user.withdrawal.domain.entity.WithdrawalSagaEntity;
@@ -64,6 +70,7 @@ class WithdrawalSagaTest {
     @Autowired ObjectMapper json;
     @MockitoBean RefreshTokenService refreshTokens;
     @MockitoBean Clock clock;
+    @MockitoBean MatchWithdrawalClient matchClient;
 
     @BeforeEach
     void setUp() {
@@ -71,6 +78,8 @@ class WithdrawalSagaTest {
         outbox.deleteAllInBatch();
         sagas.deleteAllInBatch();
         at(T0);
+        // 기본은 match가 처리하지 않은 경우(NONE)
+        matchSays("NONE");
     }
 
     // 접수: 202 응답 값, 회원 WITHDRAWING, Saga PROCESSING, 요청 이벤트 Outbox
@@ -217,7 +226,7 @@ class WithdrawalSagaTest {
                 null, null, null, null))).isInstanceOf(IllegalArgumentException.class);
     }
 
-    // 마감 5분 + 유예 30초 전에는 그대로, 지나면 TIMED_OUT + ACTIVE 복구
+    // 미처리 → TIMED_OUT/ACTIVE. 마감 5분 + 유예 30초 전에는 match에 묻지도 않고 그대로
     @Test
     void sagaTimesOutOnlyAfterDeadlinePlusGrace() {
         double before = results("timed_out");
@@ -228,8 +237,11 @@ class WithdrawalSagaTest {
         assertThat(sagaService.timeOutExpired()).isZero();
         assertThat(sagas.findById(saga.getSagaId()).orElseThrow().getStatus()).isEqualTo(SagaStatus.PROCESSING);
 
+        verify(matchClient, never()).result(anyString(), any(), anyString(), anyString());
+
         at(T0.plus(Duration.ofMinutes(5)).plusSeconds(31));
         assertThat(sagaService.timeOutExpired()).isEqualTo(1);
+        verify(matchClient).result(saga.getSagaId(), user.getId(), saga.getClaimToken(), "2026-11-01T03:05Z");
 
         WithdrawalSagaEntity done = sagas.findById(saga.getSagaId()).orElseThrow();
         assertThat(done.getStatus()).isEqualTo(SagaStatus.TIMED_OUT);
@@ -263,6 +275,102 @@ class WithdrawalSagaTest {
         assertThat(late("rejected")).isEqualTo(lateRejected + 1);
         assertThat(results("success")).isEqualTo(success);
         verify(refreshTokens, never()).delete(first.getId());
+    }
+
+    // 정리 완료 + 전달 지연 → WITHDRAWN/CLEANED. API로 끝난 뒤 온 같은 요청의 CLEANED는 정상 중복(처리 기록만, late 아님)
+    @Test
+    void timeoutWithCleanedAtMatchCompletesWithdrawal() {
+        double success = results("success");
+        double timedOut = results("timed_out");
+        double lateCleaned = late("cleaned");
+        UserEntity user = user(UserStatus.ACTIVE);
+        WithdrawalSagaEntity saga = accept(user);
+        matchSays("CLEANED");
+
+        at(T0.plus(Duration.ofMinutes(6)));
+        assertThat(sagaService.timeOutExpired()).isEqualTo(1);
+
+        assertThat(users.findById(user.getId()).orElseThrow().getStatus()).isEqualTo(UserStatus.WITHDRAWN);
+        assertThat(sagas.findById(saga.getSagaId()).orElseThrow().getStatus()).isEqualTo(SagaStatus.CLEANED);
+        verify(refreshTokens).delete(user.getId());
+        assertThat(results("success")).isEqualTo(success + 1);
+        assertThat(results("timed_out")).isEqualTo(timedOut);
+
+        WithdrawalResultEvent delayed = cleaned(saga);
+        sagaService.handleCleaned(delayed);
+
+        assertThat(users.findById(user.getId()).orElseThrow().getStatus()).isEqualTo(UserStatus.WITHDRAWN);
+        assertThat(sagas.findById(saga.getSagaId()).orElseThrow().getStatus()).isEqualTo(SagaStatus.CLEANED);
+        assertThat(processed.existsById(delayed.eventId())).isTrue();
+        assertThat(results("success")).isEqualTo(success + 1);
+        assertThat(late("cleaned")).isEqualTo(lateCleaned);
+    }
+
+    // 거절 → REJECTED/ACTIVE(정상 REJECTED 수신과 같은 처리)
+    @Test
+    void timeoutWithRejectedAtMatchRestoresActiveAsRejected() {
+        double rejected = results("rejected");
+        double timedOut = results("timed_out");
+        UserEntity user = user(UserStatus.ACTIVE);
+        WithdrawalSagaEntity saga = accept(user);
+        matchSays("REJECTED");
+
+        at(T0.plus(Duration.ofMinutes(6)));
+        assertThat(sagaService.timeOutExpired()).isEqualTo(1);
+
+        assertThat(users.findById(user.getId()).orElseThrow().getStatus()).isEqualTo(UserStatus.ACTIVE);
+        assertThat(sagas.findById(saga.getSagaId()).orElseThrow().getStatus()).isEqualTo(SagaStatus.REJECTED);
+        assertThat(results("rejected")).isEqualTo(rejected + 1);
+        assertThat(results("timed_out")).isEqualTo(timedOut);
+        verify(refreshTokens, never()).delete(user.getId());
+    }
+
+    // 조회 실패 → WITHDRAWING 유지 후 다음 주기에 재확인해 반영
+    @Test
+    void matchLookupFailureKeepsWithdrawingUntilNextCycle() {
+        double failures = meters.get("sporty.withdrawal.saga.result.check.failures").counter().count();
+        UserEntity user = user(UserStatus.ACTIVE);
+        WithdrawalSagaEntity saga = accept(user);
+        doThrow(new RuntimeException("match-service down")).when(matchClient)
+                .result(anyString(), any(), anyString(), anyString());
+
+        at(T0.plus(Duration.ofMinutes(6)));
+        assertThat(sagaService.timeOutExpired()).isZero();
+
+        assertThat(users.findById(user.getId()).orElseThrow().getStatus()).isEqualTo(UserStatus.WITHDRAWING);
+        assertThat(sagas.findById(saga.getSagaId()).orElseThrow().getStatus()).isEqualTo(SagaStatus.PROCESSING);
+        assertThat(meters.get("sporty.withdrawal.saga.result.check.failures").counter().count())
+                .isEqualTo(failures + 1);
+
+        matchSays("CLEANED");
+        assertThat(sagaService.timeOutExpired()).isEqualTo(1);
+        assertThat(users.findById(user.getId()).orElseThrow().getStatus()).isEqualTo(UserStatus.WITHDRAWN);
+        assertThat(sagas.findById(saga.getSagaId()).orElseThrow().getStatus()).isEqualTo(SagaStatus.CLEANED);
+    }
+
+    // 응답 식별 값 불일치·형식 오류·모르는 result는 NONE이 아니라 조회 실패(WITHDRAWING 유지 + 실패 지표)
+    @Test
+    void mismatchedOrUnknownLookupResponseIsAFailure() {
+        double failures = meters.get("sporty.withdrawal.saga.result.check.failures").counter().count();
+        UserEntity user = user(UserStatus.ACTIVE);
+        WithdrawalSagaEntity saga = accept(user);
+        at(T0.plus(Duration.ofMinutes(6)));
+
+        answer(inv -> new WithdrawalResult(inv.getArgument(0), uuid(), inv.getArgument(1), "CLEANED"));
+        assertThat(sagaService.timeOutExpired()).isZero();
+        answer(inv -> new WithdrawalResult(inv.getArgument(0), inv.getArgument(2), 999_999L, "NONE"));
+        assertThat(sagaService.timeOutExpired()).isZero();
+        answer(inv -> new WithdrawalResult(uuid(), inv.getArgument(2), inv.getArgument(1), "NONE"));
+        assertThat(sagaService.timeOutExpired()).isZero();
+        matchSays("DONE");
+        assertThat(sagaService.timeOutExpired()).isZero();
+        answer(inv -> null);
+        assertThat(sagaService.timeOutExpired()).isZero();
+
+        assertThat(users.findById(user.getId()).orElseThrow().getStatus()).isEqualTo(UserStatus.WITHDRAWING);
+        assertThat(sagas.findById(saga.getSagaId()).orElseThrow().getStatus()).isEqualTo(SagaStatus.PROCESSING);
+        assertThat(meters.get("sporty.withdrawal.saga.result.check.failures").counter().count())
+                .isEqualTo(failures + 5);
     }
 
     // 결과로 끝난 Saga는 시간이 지나도 TIMED_OUT으로 바뀌지 않는다
@@ -306,6 +414,15 @@ class WithdrawalSagaTest {
     private UserEntity user(UserStatus status) {
         return users.save(UserEntity.builder().email(uuid().substring(0, 20) + "@test.io")
                 .password(passwords.encode(PASSWORD)).gender(Gender.MALE).status(status).build());
+    }
+
+    private void matchSays(String result) {
+        // match는 받은 sagaId·userId·requestEventId를 결과 행 기준으로 돌려준다
+        answer(inv -> new WithdrawalResult(inv.getArgument(0), inv.getArgument(2), inv.getArgument(1), result));
+    }
+
+    private void answer(org.mockito.stubbing.Answer<WithdrawalResult> answer) {
+        doAnswer(answer).when(matchClient).result(anyString(), any(), anyString(), anyString());
     }
 
     private void at(Instant instant) {

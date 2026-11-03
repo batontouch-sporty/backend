@@ -56,6 +56,40 @@ public class WithdrawalStore {
                         });
     }
 
+    /** Result row identity returned by GET /internal/withdrawals/{sagaId}. */
+    public record SagaResult(String sagaId, String requestEventId, Long userId, String result) {}
+
+    /**
+     * This Saga's committed result row (CLEANED or REJECTED), or null. Same indexed lookup as
+     * {@link #completed}; cleanup and its result row commit together.
+     */
+    public SagaResult result(String sagaId, long userId) {
+        return jdbc
+                .query(
+                        "SELECT event_type,payload FROM outbox_event WHERE aggregate_id=? AND event_type IN"
+                                + " ('match.withdrawal-cleaned.v1','match.withdrawal-rejected.v1')",
+                        (r, n) -> {
+                            try {
+                                var json = mapper.readTree(r.getString(2));
+                                if (!sagaId.equals(json.path("sagaId").asText())) return null;
+                                return new SagaResult(
+                                        sagaId,
+                                        json.path("requestEventId").asText(),
+                                        json.path("userId").asLong(),
+                                        "match.withdrawal-cleaned.v1".equals(r.getString(1))
+                                                ? "CLEANED"
+                                                : "REJECTED");
+                            } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {
+                                throw new IllegalStateException(ex);
+                            }
+                        },
+                        Long.toString(userId))
+                .stream()
+                .filter(Objects::nonNull)
+                .min(Comparator.comparing(SagaResult::result)) // CLEANED wins if both ever exist
+                .orElse(null);
+    }
+
     public record Match(
             long id,
             String title,

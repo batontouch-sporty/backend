@@ -4,6 +4,15 @@ server:
 spring:
   application:
     name: user-service
+  # match 결과 조회 타임아웃 기본값. match는 회원 잠금을 최대 3초 기다리므로 읽기는 그보다 길게 둔다.
+  # config-repo에 같은 키가 있으면 그 값이 우선한다.
+  cloud:
+    openfeign:
+      client:
+        config:
+          userMatchWithdrawalClient:
+            connectTimeout: ${USER_MATCH_CONNECT_TIMEOUT_MS:1000}
+            readTimeout: ${USER_MATCH_READ_TIMEOUT_MS:5000}
   profiles:
     # IDE 실행은 local. Compose는 dev, K8s는 prod를 SPRING_PROFILES_ACTIVE로 준다.
     default: local
@@ -15,3 +24,4 @@ spring:
       - configserver:${CONFIG_SERVER_URL:http://localhost:8888}
       - optional:file:./.env[.properties]
       - optional:file:../.env[.properties]
+

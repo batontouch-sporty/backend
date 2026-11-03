@@ -17,6 +17,7 @@ import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 class WithdrawalProcessorTest {
     JdbcTemplate jdbc;
@@ -471,5 +472,139 @@ class WithdrawalProcessorTest {
         }
         assertThat(count("processed_events")).isEqualTo(2);
         assertThat(count("outbox_event")).isEqualTo(1);
+    }
+
+    WithdrawalResultController api() {
+        return new WithdrawalResultController(
+                store, locks(), new DataSourceTransactionManager(jdbc.getDataSource()), clock);
+    }
+
+    MemberLocks locks() {
+        return System.getenv("SAGA_TEST_JDBC") != null
+                ? new MemberLocks(jdbc.getDataSource())
+                : new TestMemberLocks(jdbc.getDataSource());
+    }
+
+    WithdrawalStore.SagaResult ask(WithdrawalRequest r) {
+        return api().result(r.sagaId(), r.userId(), r.eventId(), r.deadlineAt().toString());
+    }
+
+    // 정리 완료 + 전달 지연 -> CLEANED, 거절 -> REJECTED, 미처리(마감 뒤) -> NONE. 응답에 Saga 식별 값이 있다.
+    @Test
+    void resultApiReportsCleanedRejectedOrNoneWithIdentity() {
+        match(2, "RECRUITING", false);
+        var cleaned = request(2);
+        processor.handle(cleaned);
+        match(3, "IN_PROGRESS", true);
+        var rejected = request(3);
+        processor.handle(rejected);
+        var untouched = request(4);
+
+        assertThat(ask(cleaned))
+                .isEqualTo(new WithdrawalStore.SagaResult(cleaned.sagaId(), cleaned.eventId(), 2L, "CLEANED"));
+        assertThat(ask(rejected))
+                .isEqualTo(new WithdrawalStore.SagaResult(rejected.sagaId(), rejected.eventId(), 3L, "REJECTED"));
+        // 다른 회원 ID로 물으면 그 회원의 결과 행만 보므로 찾지 못한다
+        assertThatThrownBy(() -> api().result(cleaned.sagaId(), 3L, cleaned.eventId(), cleaned.deadlineAt().toString()))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+
+        clock.now = clock.now.plusSeconds(330);
+        assertThat(ask(untouched))
+                .isEqualTo(new WithdrawalStore.SagaResult(untouched.sagaId(), untouched.eventId(), 4L, "NONE"));
+    }
+
+    // 마감 전에는 결과가 없어도 NONE을 주지 않는다(409: 아직 결정할 수 없음)
+    @Test
+    void resultApiBeforeDeadlineIsUndecided() {
+        var r = request(2);
+        assertThatThrownBy(() -> ask(r))
+                .isInstanceOfSatisfying(
+                        org.springframework.web.server.ResponseStatusException.class,
+                        ex -> assertThat(ex.getStatusCode().value()).isEqualTo(409));
+        assertThatThrownBy(() -> api().result(r.sagaId(), 2L, r.eventId(), "not-a-time"))
+                .isInstanceOfSatisfying(
+                        org.springframework.web.server.ResponseStatusException.class,
+                        ex -> assertThat(ex.getStatusCode().value()).isEqualTo(400));
+    }
+
+    // 미처리 -> NONE 뒤 같은 요청이 오면 DEADLINE_EXCEEDED로만 거절되고 아무것도 정리되지 않는다
+    @Test
+    void noneIsFinalLaterRequestIsDeadlineExceeded() throws Exception {
+        long owned = match(2, "RECRUITING", false);
+        var r = request(2);
+        clock.now = clock.now.plusSeconds(330);
+        assertThat(ask(r).result()).isEqualTo("NONE");
+
+        processor.handle(r);
+
+        assertThat(result().path("reason").asText()).isEqualTo("DEADLINE_EXCEEDED");
+        assertThat(ask(r).result()).isEqualTo("REJECTED");
+        assertThat(jdbc.queryForObject("SELECT status FROM matches WHERE id=?", String.class, owned))
+                .isEqualTo("RECRUITING");
+    }
+
+    // 정리 트랜잭션이 회원 잠금을 잡고 커밋 전이면, 결과 API는 기다렸다가 커밋된 CLEANED를 본다
+    @Test
+    void resultApiWaitsForInFlightCleanupAndSeesCleaned() throws Exception {
+        match(2, "RECRUITING", false);
+        var r = request(2);
+        var asked = askWhileCleanupHolds(r, false);
+        assertThat(asked.result()).isEqualTo("CLEANED");
+        assertThat(asked.requestEventId()).isEqualTo(r.eventId());
+    }
+
+    // 정리 중 마감이 지나면 커밋 직전 검사로 롤백되고 DEADLINE_EXCEEDED. 기다리던 API는 CLEANED를 보지 않는다
+    @Test
+    void cleanupPastDeadlineAtCommitIsNeverReportedCleaned() throws Exception {
+        long owned = match(2, "RECRUITING", false);
+        var r = request(2);
+        var asked = askWhileCleanupHolds(r, true);
+        assertThat(asked.result()).isIn("NONE", "REJECTED");
+        assertThat(result().path("reason").asText()).isEqualTo("DEADLINE_EXCEEDED");
+        assertThat(ask(r).result()).isEqualTo("REJECTED");
+        assertThat(jdbc.queryForObject("SELECT status FROM matches WHERE id=?", String.class, owned))
+                .isEqualTo("RECRUITING");
+    }
+
+    /** Hold the cleanup transaction (member lock taken, not committed) while the API is asked. */
+    WithdrawalStore.SagaResult askWhileCleanupHolds(WithdrawalRequest r, boolean passDeadline)
+            throws Exception {
+        var holding = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        doAnswer(
+                        inv -> {
+                            var answer = inv.callRealMethod();
+                            if (passDeadline) clock.now = clock.now.plusSeconds(330);
+                            holding.countDown();
+                            release.await(10, TimeUnit.SECONDS);
+                            return answer;
+                        })
+                .when(store)
+                .emit(eq("match.withdrawal-cleaned.v1"), anyLong(), anyMap(), any());
+        var pool = Executors.newFixedThreadPool(2);
+        try {
+            var cleanup = pool.submit(() -> processor.handle(r));
+            assertThat(holding.await(10, TimeUnit.SECONDS)).isTrue();
+            var apiThread = new AtomicReference<Thread>();
+            Future<WithdrawalStore.SagaResult> asked =
+                    pool.submit(
+                            () -> {
+                                apiThread.set(Thread.currentThread());
+                                return ask(r);
+                            });
+            // the API must be parked on the member lock, not answering from a pre-commit read
+            long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+            while ((apiThread.get() == null
+                            || !Set.of(Thread.State.WAITING, Thread.State.TIMED_WAITING)
+                                    .contains(apiThread.get().getState()))
+                    && System.nanoTime() < until) Thread.onSpinWait();
+            assertThat(asked.isDone()).isFalse();
+            release.countDown();
+            cleanup.get(10, TimeUnit.SECONDS);
+            return asked.get(10, TimeUnit.SECONDS);
+        } finally {
+            release.countDown();
+            pool.shutdownNow();
+        }
     }
 }

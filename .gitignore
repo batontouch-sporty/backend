@@ -41,6 +41,10 @@ out/
 .env
 .env.*
 !.env.example
+# Config Server 암호화 키스토어
+*.jks
+*.p12
+*.pfx
 
 ### Maven ###
 target/

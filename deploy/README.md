@@ -64,7 +64,7 @@ docker compose -f docker-compose.yml -f deploy/single/compose.yml pull
 docker compose -f docker-compose.yml -f deploy/single/compose.yml up -d --wait
 ```
 
-- 루트와 다른 점: 앱 8개는 빌드 대신 Docker Hub 이미지를 받는다. 프론트(`sporty-frontend`, 80)를 추가하고 nginx가 `GATEWAY_UPSTREAM=gateway-service:8000`으로 API를 넘긴다. Gateway 8000과 Grafana 3001을 모든 인터페이스에 연다. 나머지 포트는 루트대로 `127.0.0.1`에만 열린다.
+- 루트와 다른 점: 앱 8개는 빌드 대신 Docker Hub 이미지를 받는다. 프론트(`sporty-frontend`, 80)를 추가하고 nginx가 `GATEWAY_UPSTREAM=gateway-service:8000`으로 API를 넘긴다. Gateway 8000과 Grafana 3001을 모든 인터페이스에 연다. 나머지 포트는 루트대로 `127.0.0.1`에만 열린다. nginx는 시작할 때 Gateway 주소를 한 번만 찾으므로, gateway-service 컨테이너를 다시 만들었으면 frontend도 `docker compose ... restart frontend`로 다시 띄운다.
 - 브라우저가 8000으로 직접 API를 부르는 구성이면 `.env`의 `CORS_ALLOWED_ORIGIN`을 `http://<공인 IP>`로 맞춘다. nginx를 거치면 같은 출처라 필요 없다.
 
 ### 보안 그룹 (단일 서버 인바운드)

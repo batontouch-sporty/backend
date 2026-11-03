@@ -35,6 +35,28 @@ spec:
             - configMapRef:
                 name: tracing-config
           env:
+            # Spring Cloud Bus(RabbitMQ). infra EC2 주소는 ConfigMap, 계정은 Secret에서 받는다.
+            - name: RABBITMQ_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: sporty-infra-endpoints
+                  key: RABBITMQ_HOST
+            - name: RABBITMQ_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: sporty-infra-endpoints
+                  key: RABBITMQ_PORT
+                  optional: true
+            - name: RABBITMQ_USER
+              valueFrom:
+                secretKeyRef:
+                  name: sporty-rabbitmq
+                  key: RABBITMQ_USER
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sporty-rabbitmq
+                  key: RABBITMQ_PASSWORD
             - name: MARIADB_HOST
               valueFrom:
                 configMapKeyRef:

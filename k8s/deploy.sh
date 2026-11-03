@@ -24,9 +24,18 @@ K8S_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROLLOUT_TIMEOUT="${ROLLOUT_TIMEOUT:-300s}"
 
 APPS=(discovery config gateway user match facility ai notification)
-SECRETS=(sporty-jwt user-service-secret match-service-secret facility-service-secret notification-service-secret)
+SECRETS=(sporty-jwt sporty-rabbitmq user-service-secret match-service-secret facility-service-secret notification-service-secret)
 
 echo "대상 클러스터: $(kubectl config current-context)"
+
+# Secret에 키가 있고 값이 비어 있지 않은지 본다. 값은 출력하지 않는다. 키에 점이 있으면 \. 로 넘긴다.
+has_key() { [ -n "$(kubectl -n "$NS" get secret "$1" -o "jsonpath={.data.$2}")" ]; }
+# 선택 Secret이 있는지 본다. 없으면 1, 권한·연결 문제로 조회가 실패하면 "없음"으로 넘기지 않고 멈춘다.
+secret_exists() {
+  local out
+  out="$(kubectl -n "$NS" get secret "$1" --ignore-not-found -o name)" || { echo "[멈춤] Secret $1 조회 실패(권한·클러스터 연결 확인)" >&2; exit 1; }
+  [ -n "$out" ]
+}
 
 # Deployment가 참조하는 ConfigMap·Secret이 먼저 있어야 Pod가 뜬다.
 missing=0
@@ -37,6 +46,9 @@ fi
 if ! kubectl -n "$NS" get configmap sporty-infra-endpoints >/dev/null 2>&1; then
   echo "[없음] ConfigMap sporty-infra-endpoints (예시: k8s/infra-endpoints.example.yaml)" >&2
   missing=1
+elif [ -z "$(kubectl -n "$NS" get configmap sporty-infra-endpoints -o jsonpath='{.data.RABBITMQ_HOST}')" ]; then
+  echo "[없음] ConfigMap sporty-infra-endpoints 의 RABBITMQ_HOST (예시: k8s/infra-endpoints.example.yaml)" >&2
+  missing=1
 fi
 for s in "${SECRETS[@]}"; do
   if ! kubectl -n "$NS" get secret "$s" >/dev/null 2>&1; then
@@ -44,9 +56,28 @@ for s in "${SECRETS[@]}"; do
     missing=1
   fi
 done
+# sporty-rabbitmq는 7개 Deployment가 필수로 읽는다. 키가 빠지면 Pod가 CreateContainerConfigError로 멈춘다.
+if kubectl -n "$NS" get secret sporty-rabbitmq >/dev/null 2>&1; then
+  for k in RABBITMQ_USER RABBITMQ_PASSWORD; do
+    has_key sporty-rabbitmq "$k" || { echo "[없음] Secret sporty-rabbitmq 의 $k" >&2; missing=1; }
+  done
+fi
+# 키스토어는 선택이지만, 만들었다면 키가 모두 있어야 한다. 하나라도 빠지면 config-service가 조용히 암호화 없이 뜨거나 기동에 실패한다.
+keystore=0
+if secret_exists config-encrypt-keystore; then
+  keystore=1
+  has_key config-encrypt-keystore 'config\.jks' || { echo "[없음] Secret config-encrypt-keystore 의 config.jks" >&2; missing=1; }
+  for k in ENCRYPT_KEYSTORE_LOCATION ENCRYPT_KEYSTORE_PASSWORD ENCRYPT_KEYSTORE_ALIAS; do
+    has_key config-encrypt-keystore "$k" || { echo "[없음] Secret config-encrypt-keystore 의 $k" >&2; missing=1; }
+  done
+fi
 if [ "$missing" -ne 0 ]; then
   echo "[멈춤] 위 리소스를 k8s/README.md 'AWS 배포 절차' 2단계대로 만든 뒤 다시 실행한다." >&2
   exit 1
+fi
+# 키스토어는 선택이다. 없으면 {cipher} 복호화 없이 기동한다.
+if [ "$keystore" -eq 0 ]; then
+  echo "[안내] Secret config-encrypt-keystore 가 없어 config-service는 암호화 없이 기동한다. prod 설정에 {cipher} 값이 있으면 복호화되지 않는다."
 fi
 
 TMP="$(mktemp -d)"

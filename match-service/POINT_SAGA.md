@@ -4,7 +4,7 @@
 
 - 포인트 서비스 v4.0, 연결된 포인트 API 명세, 11/02 서우영·최환우 Kafka 계약 기준.
 - PR #111의 R10 DDL 및 user-service의 포인트 코드와 함께 반영한다. 이 브랜치만 R8 DB에 배포하지 않는다.
-- 포인트 자체의 차감·반환·정산·정지 해제는 user-service 책임이다. 출석 수정·종료 정산 발행은 매칭 A 담당이며 이 변경에서는 구현하지 않는다.
+- 포인트 자체의 차감·반환·정산·정지 해제는 user-service 책임이다. 출석 수정·종료 정산 발행은 아래 "상태 전이·출석 정산" 절을 따른다.
 - 외부 설정은 config-repo `match-service.yml`에서 관리한다. `match.deposit.enabled` 기본 true, 요청 만료 기본 5분, 만료·빈자리 재시도 기본 10초. 시간 값은 운영 설정이며 포인트 계약에 새로운 업무 제한을 추가하지 않는다.
 - 테스트의 `match.deposit.enabled=false`는 기존 API 회귀 검증용이다. R10 운영에서는 true를 사용한다. false로 해도 R10 컬럼 매핑이 있으므로 R8 호환 배포 모드는 아니다.
 
@@ -28,9 +28,16 @@
 - 수신 `user.deposit-charge-rejected.v1`: reason INSUFFICIENT_POINTS/PARTICIPATION_SUSPENDED/REQUEST_CANCELLED/USER_NOT_ACTIVE. 실패 요청은 확정하지 않는다.
 - 수신 `user.deposit-refund-completed.v1`: outcome RETURNED/CANCELLED_BEFORE_CHARGE, creditedPoints(0~10 정수). 차감 전 취소는 0.
 - 수신 `user.participation-suspended.v1`: 공통 eventId·requestId·userId·matchId·occurredAt 모두 필수이며, requestId·matchId는 정지 원인이 된 노쇼 정산 건이다. 추가 필드 suspendedUntil은 오프셋을 포함한다. occurredAt까지 등록된 대기만 삭제하며, 정지 이벤트 지연/DLT 재처리 시 그 이후의 새 대기 등록과 기존 확정 참가·방장 매치는 유지한다.
-- 매칭 A용 `match.attendance-settlement-requested.v1`도 공통 Outbox 발행 허용 목록에 포함했다. 확정 요청별 정산 이벤트 생성 로직은 매칭 A에서 연결한다.
+- 발행 `match.attendance-settlement-requested.v1`: 추가 필드 result(ATTENDED/NO_SHOW/UNDER_MIN_PARTICIPANTS). 아래 "상태 전이·출석 정산" 참고.
 - 결과 소비 groupId `match-deposit-v1`. 실패 시 1초 간격 3회 재시도 후 `<원본 토픽>.DLT`. DLT 발행 실패는 소비 완료로 처리하지 않는다.
 - 기존 참가·상태·승급·리마인더 알림 이벤트 계약과 key(matchId)는 유지한다. 새 보증금 이벤트만 userId key를 사용한다.
+
+## 상태 전이·출석 정산 (#125)
+
+- 스케줄러 `MatchLifecycleScheduler`: `match.lifecycle.delay-ms`(기본 60000), `match.lifecycle.initial-delay-ms`(기본 60000), `match.lifecycle.enabled`(기본 true). 시작 시각이 지난 RECRUITING·CLOSED → IN_PROGRESS, 종료 시각이 지난 IN_PROGRESS → COMPLETED. 둘 다 지났으면 한 트랜잭션에서 IN_PROGRESS를 거쳐 COMPLETED까지 보낸다. CREATION_PENDING·CREATION_FAILED·CANCELLED·COMPLETED는 대상이 아니다.
+- 매치 행 잠금 후 상태·시각을 다시 확인해 동시 실행·재실행에서도 한 번만 전이한다. 전이마다 기존 `match.status-changed.v1`(key matchId, participantIds는 CONFIRMED 기준)을 같은 트랜잭션 Outbox로 저장한다.
+- COMPLETED 전이 트랜잭션에서 CONFIRMED 참가자(방장 포함) 한 명마다 `match.attendance-settlement-requested.v1` 한 건. 공통 필드 eventId·requestId(그 참가자 행의 request_id)·userId·matchId·occurredAt + result. 확정 참가자 2명 미만이면 전원 UNDER_MIN_PARTICIPANTS, 아니면 출석값(ATTENDED/NO_SHOW). key는 userId. eventId는 `토픽:requestId`의 이름 기반 UUID라 같은 참가 요청에 두 건이 저장되지 않는다. `match.deposit.enabled=false`면 발행하지 않는다.
+- 출석 수정 `PATCH /api/matches/{matchId}/participants/{participantId}/attendance`: API_CONTRACT.md 참고.
 
 ## 영속 상태와 잠금
 

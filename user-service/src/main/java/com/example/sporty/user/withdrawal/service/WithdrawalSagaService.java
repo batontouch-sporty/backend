@@ -147,9 +147,14 @@ public class WithdrawalSagaService {
                     if (result == null) {
                         continue;
                     }
-                    Boolean done = transaction.execute(status -> timeOutOne(sagaId, before, result));
-                    if (Boolean.TRUE.equals(done)) {
-                        count++;
+                    try {
+                        Boolean done = transaction.execute(status -> timeOutOne(sagaId, before, result));
+                        if (Boolean.TRUE.equals(done)) {
+                            count++;
+                        }
+                    } catch (RuntimeException e) {
+                        // 한 건 반영 실패는 롤백만 하고 뒤의 Saga를 계속 확인한다. 이 건은 다음 주기에 다시 처리한다.
+                        log.warn("탈퇴 Saga 시간 초과 반영 실패, 다음 주기에 재시도: sagaId={}, error={}", sagaId, e.toString());
                     }
                 }
                 if (batch.size() < TIMEOUT_BATCH) {

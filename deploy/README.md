@@ -77,28 +77,35 @@ A(`sporty-infra` 프로젝트)와 B(`sporty` 프로젝트)는 Compose 프로젝�
 docker compose --env-file .env -f deploy/infra/compose.yml down
 ```
 
-2단계는 아래 둘 중 **하나만** 실행한다.
+2단계는 아래 셋 중 **하나만** 실행한다. B의 DB 볼륨은 `sporty_mariadb-data`이고, 한 번 만들어지면 `up`을 다시 해도 그대로 쓴다.
 
-방법 1(기본): B를 새 DB로 시작한다. 첫 기동 때 R10 스키마·서비스 계정·관리자 계정이 다시 만들어진다.
+방법 1: B를 처음 띄운다(B의 DB 볼륨이 아직 없음). 첫 기동 때 R10 스키마·서비스 계정·관리자 계정이 만들어진다.
 
 ```bash
 docker compose -f docker-compose.yml -f deploy/single/compose.yml up -d --wait
 ```
 
-방법 2: A에서 쌓은 데이터를 이어서 쓴다. B를 **한 번도 띄우지 않은 상태**에서만 쓴다. 이미 B를 띄운 적이 있으면 먼저 `docker compose -f docker-compose.yml -f deploy/single/compose.yml down -v`로 B의 DB를 지운 뒤 진행한다(B 데이터는 사라진다).
+방법 2: 예전에 띄운 B의 DB를 버리고 새 DB로 시작한다. `down -v`는 Alertmanager 데이터까지 지우므로 쓰지 않고 MariaDB 볼륨만 지운다.
 
 ```bash
-if docker volume inspect sporty_mariadb-data >/dev/null 2>&1; then
-  echo "B의 DB 볼륨이 이미 있다. 위 안내대로 먼저 지운다"
-else
-  docker volume create sporty_mariadb-data
-  docker run --rm -v sporty-infra_mariadb-data:/from -v sporty_mariadb-data:/to alpine sh -c "cp -a /from/. /to/"
-  docker compose -f docker-compose.yml -f deploy/single/compose.yml up -d --wait
-fi
+docker compose -f docker-compose.yml -f deploy/single/compose.yml down \
+  && docker volume rm sporty_mariadb-data \
+  && docker compose -f docker-compose.yml -f deploy/single/compose.yml up -d --wait
+```
+
+방법 3: A에서 쌓은 데이터를 B로 옮긴다. A의 DB 볼륨이 있고 B의 DB 볼륨이 없을 때만 진행하고, 복사가 실패하면 B를 띄우지 않는다. B의 DB 볼륨이 이미 있으면 방법 2의 앞 두 줄로 먼저 지운다.
+
+```bash
+docker volume inspect sporty-infra_mariadb-data >/dev/null \
+  && ! docker volume inspect sporty_mariadb-data >/dev/null 2>&1 \
+  && docker volume create sporty_mariadb-data \
+  && docker run --rm -v sporty-infra_mariadb-data:/from:ro -v sporty_mariadb-data:/to alpine sh -c "cp -a /from/. /to/" \
+  && docker compose -f docker-compose.yml -f deploy/single/compose.yml up -d --wait \
+  || echo "중단: A의 DB 볼륨이 없거나, B의 DB 볼륨이 이미 있거나, 복사에 실패했다"
 ```
 
 - B로 전환한 뒤 A로 되돌아가려면 B를 `down`(볼륨 유지)으로 내리고 A를 다시 올린다. A의 DB는 1단계에서 남겨 둔 그대로다.
-- 볼륨을 지우는 `down -v`는 DB를 처음부터 다시 만들 때만 쓴다.
+- `down -v`는 MariaDB와 Alertmanager 볼륨을 모두 지운다. DB만 새로 만들 때는 방법 2를 쓴다.
 
 ### 보안 그룹 (단일 서버 인바운드)
 

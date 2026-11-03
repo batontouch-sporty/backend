@@ -1,0 +1,40 @@
+# 폴더별 담당자. 담당 폴더를 바꾸는 PR에는 담당자가 리뷰어로 자동 지정된다.
+# 아래쪽 줄이 위쪽 줄보다 우선한다.
+
+# 기본 · 공통 설정
+*                                   @GREED-YI
+/.github/                           @GREED-YI
+/build.gradle                       @GREED-YI
+/settings.gradle                    @GREED-YI
+
+# 회원 · 알림
+/user-service/                      @VirginiaToVegas
+/notification-service/              @VirginiaToVegas
+
+# 포인트
+/user-service/src/main/java/com/example/sporty/user/points/  @uyeongseo @VirginiaToVegas
+/user-service/src/test/java/com/example/sporty/user/points/  @uyeongseo @VirginiaToVegas
+
+# 매칭
+/match-service/                     @choihwanwoo @hssondev
+
+# 시설 · AI
+/facility-service/                  @noxisna
+/ai-service/                        @noxisna
+
+# Gateway · Config
+/gateway-service/                   @GREED-YI
+/config-service/                    @GREED-YI
+
+# 인프라
+/discovery-service/                 @yusung0520
+/k8s/                               @yusung0520
+/docker-compose.yml                 @yusung0520 @GREED-YI
+/*/Dockerfile                       @yusung0520
+
+# DB 스키마 · 명세 (모든 서비스에 영향)
+/docker/mariadb/                    @hssondev @GREED-YI
+/docs/                              @hssondev @Ahnjisan
+
+# 모니터링
+/monitoring/                        @uyeongseo @Ahnjisan

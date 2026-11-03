@@ -1,9 +1,11 @@
 package com.example.sporty.user.withdrawal;
 
+import com.example.sporty.user.withdrawal.client.MatchWithdrawalClient;
 import com.example.sporty.user.withdrawal.events.KafkaTopics;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import org.apache.kafka.common.TopicPartition;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.cloud.openfeign.EnableFeignClients;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -15,6 +17,7 @@ import java.time.Clock;
 
 @Configuration
 @EnableConfigurationProperties(WithdrawalSagaProperties.class)
+@EnableFeignClients(clients = MatchWithdrawalClient.class)
 public class WithdrawalSagaConfig {
 
     static final long RETRY_INTERVAL_MS = 1000L;

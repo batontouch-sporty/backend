@@ -64,3 +64,22 @@ DELETE의 권한·기록 보존·수신자·중복 요청 방지와 CLOSED 상�
 - 출석 기본값 ATTENDED. 종료 시 출석 정산 요청 발행과 상태 전이 스케줄러는 [POINT_SAGA.md](POINT_SAGA.md) "상태 전이·출석 정산"을 따른다.
 - A11 상세 `participants[]` 항목에 `participantId`(match_participant_id), `matchParticipantStatus`(ATTENDED/NO_SHOW)를 추가했다. 기존 profileId·nickname·imageUrl·role은 유지한다.
 - `matchParticipantStatus`는 요청자(X-User-Id)가 그 매치 방장일 때만 값이 있고, 비로그인·일반 참가자·외부 회원에게는 null이다. `participantId`는 모두에게 내려간다.
+
+## 탈퇴 Saga 결과 조회 (2026-11-03, 이슈 #143)
+
+user-service가 마감 + 유예가 지난 PROCESSING Saga를 끝내기 전에 부르는 내부 API. Gateway는 `/internal/**`를 외부에서 막는다. 이벤트 계약은 바꾸지 않는다.
+
+- `GET /internal/withdrawals/{sagaId}?userId={userId}&requestEventId={requestEventId}&deadlineAt={ISO-8601 offset}`
+- 200 `{"sagaId", "requestEventId", "userId", "result"}`. `result`는 `CLEANED` | `REJECTED` | `NONE`. CLEANED·REJECTED는 Outbox 결과 행의 값을, NONE은 받은 값을 그대로 돌려준다.
+- 처리: READ_COMMITTED 트랜잭션의 첫 문장으로 탈퇴 정리와 같은 회원 잠금(`sporty.match.member.{userId}`)을 잡고, 그 뒤 `outbox_event`(aggregate_id = userId)의 같은 sagaId 결과 행을 읽는다. 정리가 진행 중이면 커밋·롤백까지 기다린다.
+- NONE은 match 시각으로 `deadlineAt`이 지났고 결과 행이 없을 때만. 이후 같은 요청은 시작·커밋 직전 마감 검사로 DEADLINE_EXCEEDED 거절만 된다.
+- 마감 전이고 결과가 없으면 409, `deadlineAt` 형식 오류 400, 잠금 대기(3초) 초과·DB 오류 5xx.
+
+user-service 처리 기대값:
+
+| match 상태 | 조회 결과 | 회원 / Saga |
+|---|---|---|
+| 정리 완료 + 결과 전달 지연 | CLEANED | WITHDRAWN / CLEANED. 뒤에 온 같은 요청의 CLEANED 이벤트는 정상 중복(처리 기록만, late 지표 없음) |
+| 미처리 | NONE | ACTIVE / TIMED_OUT. 이후 처리 시 DEADLINE_EXCEEDED |
+| 거절 | REJECTED | ACTIVE / REJECTED |
+| 조회 실패(409·5xx·연결 실패·식별 값 불일치·모르는 값) | - | WITHDRAWING / PROCESSING 유지, 다음 주기 재확인. `sporty_withdrawal_saga_result_check_failures_total` + WARN |

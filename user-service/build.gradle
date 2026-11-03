@@ -13,6 +13,8 @@ dependencies {
 
     // 탈퇴 Saga: 요청 이벤트 발행(Outbox)과 결과 이벤트 구독
     implementation 'org.springframework.kafka:spring-kafka'
+    // 시간 초과 때 match-service에 처리 결과를 묻는다(GET /internal/withdrawals/{sagaId})
+    implementation 'org.springframework.cloud:spring-cloud-starter-openfeign'
     // Saga 결과·늦은 결과 Counter를 Prometheus로 내보낸다(/actuator/prometheus)
     runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
 

@@ -78,8 +78,10 @@ class MatchErrorResponseTest {
                 .andExpect(status().isBadRequest());
         mvc.perform(get("/internal/withdrawals/s1")
                         .param("userId", "abc").param("requestEventId", "e1").param("deadlineAt", "not-a-time"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
         mvc.perform(get("/internal/withdrawals/s1").param("userId", "1"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
     }
 }

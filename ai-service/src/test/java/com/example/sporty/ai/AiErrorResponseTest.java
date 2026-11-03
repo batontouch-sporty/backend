@@ -41,7 +41,8 @@ class AiErrorResponseTest {
                 .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
         // 숫자가 아닌 X-User-Id는 원래도 400이었다
         mvc.perform(get("/api/ai/matches/recommendations").header("X-User-Id", "abc"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
     }
 
     @Test

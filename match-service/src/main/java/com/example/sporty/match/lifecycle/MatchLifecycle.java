@@ -42,12 +42,14 @@ public class MatchLifecycle {
         this.depositEnabled = depositEnabled;
     }
 
-    public List<Long> candidates() {
+    /** Id cursor page: the scheduler walks every page, so failing matches cannot starve later ones. */
+    public List<Long> candidates(long afterId) {
         var now = now();
         return jdbc.queryForList(
-                "SELECT id FROM matches WHERE (status IN ('RECRUITING','CLOSED') AND start_at<=?)"
-                        + " OR (status='IN_PROGRESS' AND end_at<=?) ORDER BY start_at,id LIMIT 100",
+                "SELECT id FROM matches WHERE id>? AND ((status IN ('RECRUITING','CLOSED') AND"
+                        + " start_at<=?) OR (status='IN_PROGRESS' AND end_at<=?)) ORDER BY id LIMIT 100",
                 Long.class,
+                afterId,
                 now,
                 now);
     }
@@ -93,7 +95,7 @@ public class MatchLifecycle {
             fields.put("userId", p.getUserId());
             fields.put("matchId", match.getId());
             fields.put("occurredAt", OffsetDateTime.now(ZoneOffset.UTC).toString());
-            fields.put("result", underMin ? "UNDER_MIN_PARTICIPANTS" : p.getMatchParticipantStatus());
+            fields.put("outcome", underMin ? "UNDER_MIN_PARTICIPANTS" : p.getMatchParticipantStatus());
             try {
                 jdbc.update(
                         "INSERT INTO outbox_event(event_id,aggregate_id,event_type,payload) VALUES"

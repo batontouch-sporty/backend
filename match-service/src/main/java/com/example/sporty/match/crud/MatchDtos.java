@@ -91,13 +91,11 @@ public final class MatchDtos {
 
     public record Participant(
             Long profileId, String nickname, String imageUrl, MatchParticipantRole role,
-            Long participantId, String attendance) {}
+            Long participantId, String matchParticipantStatus) {}
 
     public enum AttendanceValue { ATTENDED, NO_SHOW }
 
-    public record AttendanceUpdate(@NotNull(message = "필수입니다.") AttendanceValue attendance) {}
-
-    public record Attendance(Long participantId, Long userId, String attendance) {}
+    public record AttendanceUpdate(@NotNull(message = "필수입니다.") AttendanceValue matchParticipantStatus) {}
 
     public record Detail(
             Long matchId,

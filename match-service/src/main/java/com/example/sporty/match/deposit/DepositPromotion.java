@@ -68,8 +68,9 @@ public class DepositPromotion {
             if(participants.existsByMatch_IdAndUserId(matchId,row.getUserId())) {
                 waitlist.delete(row); waitlist.flush(); continue;
             }
+            MemberClient.Member member;
             try {
-                var member=checks.activeMember(row.getUserId());
+                member=checks.activeMember(row.getUserId());
                 checks.checkParticipantGender(member,match.getGenderGroup().name());
             } catch(MatchDependencyException e) {
                 if(!Set.of("USER_NOT_ACTIVE","MATCH_USER_NOT_FOUND","MATCH_GENDER_NOT_ALLOWED","PARTICIPATION_SUSPENDED").contains(e.code())) return;
@@ -77,7 +78,7 @@ public class DepositPromotion {
             }
             var p=participants.findByMatch_IdAndUserId(matchId,row.getUserId())
                     .orElseGet(()->new MatchParticipantEntity(match,row.getUserId(),MatchParticipantRole.PARTICIPANT));
-            saga.begin(p,"PROMOTE"); waitlist.delete(row); waitlist.flush(); available--;
+            saga.begin(p,"PROMOTE",member.gender()); waitlist.delete(row); waitlist.flush(); available--;
         }
     }
 }

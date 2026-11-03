@@ -347,4 +347,92 @@ class DepositSagaTest {
         verify(locks).lock(1L);
         assertThat(saga.status(request,1).status()).isEqualTo("CANCELLED");
     }
+    @Test void chargedResultConfirmsWithoutRecheckingMemberService() {
+        long m=ready(3); participation.join(m,2L);
+        when(checks.activeMember(2L)).thenThrow(new MatchDependencyException(503,"USER_SERVICE_UNAVAILABLE","unavailable"));
+        charged(id(m,2));
+        assertThat(saga.status(id(m,2),2).status()).isEqualTo("CONFIRMED");
+        assertThat(participants.countByMatch_Id(m)).isEqualTo(2);
+    }
+    @Test void lateChargeKeepsParticipantCancellationReason() {
+        long m=ready(3); participation.join(m,2L); String id=id(m,2);
+        participation.leave(m,2L); charged(id);
+        var s=saga.status(id,2);
+        assertThat(s.status()).isEqualTo("CANCELLED"); assertThat(s.failureCode()).isEqualTo("PARTICIPANT_CANCELLED");
+        assertThat(s.failureMessage()).isNull();
+        assertThat(outbox(DepositStore.REFUND)).isOne();
+    }
+    @Test void lateChargeKeepsMatchCancellationReason() {
+        long m=ready(3); participation.join(m,2L); String id=id(m,2);
+        crud.cancel(m,1L); charged(id);
+        assertThat(tx.execute(x->store.get(id)).failureCode).isEqualTo("MATCH_CANCELLED");
+        assertThat(tx.execute(x->store.get(id)).status).isEqualTo("CANCELLED");
+        assertThat(outbox(DepositStore.REFUND)).isEqualTo(2);
+    }
+    @Test void lateChargeAfterTimeoutOrRejectionKeepsStatusAndRefundsOnce() {
+        long m=ready(4); participation.join(m,2L); participation.join(m,3L);
+        String timedOut=id(m,2), rejected=id(m,3);
+        timeout(timedOut); charged(timedOut);
+        assertThat(saga.status(timedOut,2).failureCode()).isEqualTo("REQUEST_TIMED_OUT");
+        result("user.deposit-charge-rejected.v1",rejected,Map.of("reason","INSUFFICIENT_POINTS"));
+        charged(rejected); charged(rejected);
+        var s=saga.status(rejected,3);
+        assertThat(s.status()).isEqualTo("FAILED"); assertThat(s.failureCode()).isEqualTo("INSUFFICIENT_POINTS");
+        assertThat(outbox(DepositStore.REFUND)).isEqualTo(2);
+        assertThat(participants.countByMatch_Id(m)).isOne();
+    }
+    void gender(long m,String g) { jdbc.update("UPDATE matches SET gender_group=? WHERE id=?",g,m); }
+    @Test void genderRuleChangedAfterJoinFailsConfirmationAndRefunds() {
+        long m=ready(3); participation.join(m,2L); String id=id(m,2);
+        assertThat(tx.execute(x->store.get(id)).gender).isEqualTo("MALE");
+        gender(m,"FEMALE"); charged(id);
+        var s=saga.status(id,2);
+        assertThat(s.status()).isEqualTo("FAILED"); assertThat(s.failureCode()).isEqualTo("MATCH_GENDER_NOT_ALLOWED");
+        assertThat(participants.findByMatch_IdAndUserId(m,2L).orElseThrow().getParticipationStatus()).isEqualTo(ParticipationStatus.FAILED);
+        assertThat(participants.countByMatch_Id(m)).isOne();
+        assertThat(outbox(DepositStore.REFUND)).isOne();
+        assertThat(outbox("match.joined.v1")).isZero();
+        charged(id); assertThat(outbox(DepositStore.REFUND)).isOne();
+    }
+    @Test void matchingOrMixedGenderStillConfirms() {
+        long m=ready(4); participation.join(m,2L); participation.join(m,3L);
+        gender(m,"MALE"); charged(id(m,2));
+        assertThat(saga.status(id(m,2),2).status()).isEqualTo("CONFIRMED");
+        gender(m,"MIXED"); charged(id(m,3));
+        assertThat(saga.status(id(m,3),3).status()).isEqualTo("CONFIRMED");
+    }
+    @Test void olderRequestWithoutGenderConfirmsAsBefore() {
+        long m=ready(3); participation.join(m,2L); String id=id(m,2);
+        tx.executeWithoutResult(x->{ var r=store.locked(id); r.gender=null; store.save(r); });
+        gender(m,"FEMALE"); charged(id);
+        assertThat(saga.status(id,2).status()).isEqualTo("CONFIRMED");
+    }
+    @Test void promotionStoresCheckedGender() {
+        long m=ready(2); participation.join(m,2L); charged(id(m,2)); waiting.register(m,3L);
+        participation.leave(m,2L);
+        assertThat(tx.execute(x->store.get(id(m,3))).gender).isEqualTo("MALE");
+        gender(m,"FEMALE"); charged(id(m,3));
+        assertThat(saga.status(id(m,3),3).failureCode()).isEqualTo("MATCH_GENDER_NOT_ALLOWED");
+    }
+    @Test void matchCancellationKeepsConfirmedRowsAsHistory() throws Exception {
+        long m=ready(4); participation.join(m,2L); charged(id(m,2)); participation.join(m,3L);
+        crud.cancel(m,1L);
+        assertThat(participants.countByMatch_Id(m)).isEqualTo(2);
+        assertThat(participants.findByMatch_IdAndUserId(m,3L).orElseThrow().getParticipationStatus()).isEqualTo(ParticipationStatus.CANCELLED);
+        assertThat(saga.status(id(m,2),2).failureCode()).isEqualTo("MATCH_CANCELLED");
+        assertThat(crud.mine(2L)).extracting(MatchDtos.Mine::matchId).containsExactly(m);
+        mvc.perform(get("/api/matches/"+m)).andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("CANCELLED")).andExpect(jsonPath("$.participants.length()").value(2));
+        long deleted=ready(3); participation.join(deleted,2L); charged(id(deleted,2));
+        crud.delete(deleted,1L);
+        assertThat(participants.countByMatch_Id(deleted)).isEqualTo(2);
+    }
+    @Test void ownerWithdrawalKeepsOtherConfirmedRows() {
+        long m=ready(3); participation.join(m,2L); charged(id(m,2));
+        saga.withdrawal(m,1L,true);
+        assertThat(participants.findByMatch_IdAndUserId(m,2L).orElseThrow().getParticipationStatus()).isEqualTo(ParticipationStatus.CONFIRMED);
+        assertThat(participants.findByMatch_IdAndUserId(m,1L).orElseThrow().getParticipationStatus()).isEqualTo(ParticipationStatus.CANCELLED);
+        assertThat(saga.status(id(m,2),2).failureCode()).isEqualTo("MATCH_CANCELLED");
+        assertThat(outbox(DepositStore.REFUND)).isOne();
+    }
 }

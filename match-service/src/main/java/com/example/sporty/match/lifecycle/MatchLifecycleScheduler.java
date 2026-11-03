@@ -20,12 +20,16 @@ public class MatchLifecycleScheduler {
             fixedDelayString = "${match.lifecycle.delay-ms:60000}",
             initialDelayString = "${match.lifecycle.initial-delay-ms:60000}")
     public void scan() {
-        for (Long id : lifecycle.candidates()) {
-            try {
-                lifecycle.advance(id);
-            } catch (RuntimeException ex) {
-                log.warn("매치 상태 전이 실패, 다음 스캔에서 재시도합니다. matchId={}", id, ex);
+        long cursor = 0;
+        for (var page = lifecycle.candidates(cursor); !page.isEmpty(); page = lifecycle.candidates(cursor)) {
+            for (Long id : page) {
+                try {
+                    lifecycle.advance(id);
+                } catch (RuntimeException ex) {
+                    log.warn("매치 상태 전이 실패, 다음 스캔에서 재시도합니다. matchId={}", id, ex);
+                }
             }
+            cursor = page.get(page.size() - 1);
         }
     }
 }

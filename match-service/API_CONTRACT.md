@@ -59,8 +59,8 @@ DELETE의 권한·기록 보존·수신자·중복 요청 방지와 CLOSED 상�
 
 ## 출석 수정·A11 참가자 필드 (#125)
 
-- `PATCH /api/matches/{matchId}/participants/{participantId}/attendance` (Gateway `/match-service/...`), X-User-Id 필수, body `{"attendance":"ATTENDED"|"NO_SHOW"}`. 응답 200 `{participantId, userId, attendance}`.
-- 매치 행 잠금 후 검사. 미인증 401 UNAUTHORIZED, 잘못된 값·누락 400 INVALID_INPUT, 없는 매치 404 MATCH_NOT_FOUND, 방장 아님 403 FORBIDDEN, `start_at <= 현재 < end_at`이 아니거나 CANCELLED·COMPLETED 400 ATTENDANCE_NOT_EDITABLE(스케줄러 지연과 무관하게 시각 기준), 그 매치의 CONFIRMED 참가자가 아니면 404 PARTICIPANT_NOT_FOUND. 오류 본문은 기존 `{code, message}`.
+- `PATCH /api/matches/{matchId}/participants/{participantId}/attendance` (Gateway `/match-service/...`), X-User-Id 필수, body `{"matchParticipantStatus":"ATTENDED"|"NO_SHOW"}`. 성공 204 No Content(본문 없음). 같은 값으로 다시 저장해도 추가 효과는 없다. 기준은 노션 "포인트 서비스 v4.0 > API명세".
+- 매치 행 잠금 후 검사. 미인증 401 UNAUTHORIZED, 잘못된 값·누락 400 INVALID_INPUT, 없는 매치 404 MATCH_NOT_FOUND, 방장 아님 403 FORBIDDEN, `start_at <= 현재 < end_at`이 아니거나 CANCELLED·COMPLETED·CREATION_PENDING·CREATION_FAILED면 409 ATTENDANCE_UPDATE_NOT_ALLOWED(스케줄러 지연과 무관하게 시각 기준), 그 매치의 CONFIRMED 참가자가 아니면 404 MATCH_PARTICIPANT_NOT_FOUND. 오류 본문은 기존 `{code, message}`.
 - 출석 기본값 ATTENDED. 종료 시 출석 정산 요청 발행과 상태 전이 스케줄러는 [POINT_SAGA.md](POINT_SAGA.md) "상태 전이·출석 정산"을 따른다.
-- A11 상세 `participants[]` 항목에 `participantId`(match_participant_id), `attendance`(ATTENDED/NO_SHOW)를 추가했다. 기존 profileId·nickname·imageUrl·role은 유지한다.
-- `attendance`는 요청자(X-User-Id)가 그 매치 방장일 때만 값이 있고, 비로그인·일반 참가자·외부 회원에게는 null이다. `participantId`는 모두에게 내려간다.
+- A11 상세 `participants[]` 항목에 `participantId`(match_participant_id), `matchParticipantStatus`(ATTENDED/NO_SHOW)를 추가했다. 기존 profileId·nickname·imageUrl·role은 유지한다.
+- `matchParticipantStatus`는 요청자(X-User-Id)가 그 매치 방장일 때만 값이 있고, 비로그인·일반 참가자·외부 회원에게는 null이다. `participantId`는 모두에게 내려간다.

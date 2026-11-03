@@ -251,7 +251,7 @@ public class MatchCrudService {
 
     /** Owner-only edit between start and end, decided by time even if the scheduler is late. */
     @Transactional
-    public MatchDtos.Attendance attendance(
+    public void attendance(
             Long matchId, Long participantId, Long userId, MatchDtos.AttendanceUpdate request) {
         validId(matchId);
         validId(participantId);
@@ -262,16 +262,15 @@ public class MatchCrudService {
         if (!Set.of(MatchStatus.RECRUITING, MatchStatus.CLOSED, MatchStatus.IN_PROGRESS).contains(match.getStatus())
                 || match.getStartAt().isAfter(now)
                 || !now.isBefore(match.getEndAt()))
-            throw problem(400, "ATTENDANCE_NOT_EDITABLE", "모임 진행 중에만 출석을 수정할 수 있습니다.");
+            throw problem(409, "ATTENDANCE_UPDATE_NOT_ALLOWED", "모임 진행 중에만 출석을 수정할 수 있습니다.");
         var row =
                 participants
                         .findById(participantId)
                         .filter(p -> p.getMatch().getId().equals(matchId)
                                 && p.getParticipationStatus() == ParticipationStatus.CONFIRMED)
-                        .orElseThrow(() -> problem(404, "PARTICIPANT_NOT_FOUND", "참가자를 찾을 수 없습니다."));
-        row.markAttendance(request.attendance().name());
+                        .orElseThrow(() -> problem(404, "MATCH_PARTICIPANT_NOT_FOUND", "참가자를 찾을 수 없습니다."));
+        row.markAttendance(request.matchParticipantStatus().name());
         participants.flush();
-        return new MatchDtos.Attendance(row.getId(), row.getUserId(), row.getMatchParticipantStatus());
     }
 
     public List<MatchDtos.Mine> mine(Long userId) {

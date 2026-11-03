@@ -18,7 +18,6 @@ public class DepositSaga {
     private final MatchRepository matches;
     private final MatchParticipantRepository participants;
     private final MatchWaitlistRepository waitlist;
-    private final MatchRemoteChecks checks;
     private final ParticipationEvents events;
     private final MemberLocks locks;
     private final Duration timeout;
@@ -28,12 +27,12 @@ public class DepositSaga {
 
     public DepositSaga(DepositStore store, MatchRepository matches,
             MatchParticipantRepository participants, MatchWaitlistRepository waitlist,
-            MatchRemoteChecks checks, ParticipationEvents events,
+            ParticipationEvents events,
             @Qualifier("participationMemberLocks") MemberLocks locks,
             @Value("${match.deposit.timeout:5m}") Duration timeout,
             @Value("${match.deposit.enabled:true}") boolean enabled,DepositPriority priority) {
         this.store=store; this.matches=matches; this.participants=participants; this.waitlist=waitlist;
-        this.checks=checks; this.events=events; this.locks=locks; this.timeout=timeout; this.enabled=enabled;
+        this.events=events; this.locks=locks; this.timeout=timeout; this.enabled=enabled;
         this.priority=priority;
         if(timeout.isNegative()||timeout.isZero()) throw new IllegalArgumentException("Deposit timeout must be positive");
     }
@@ -46,12 +45,15 @@ public class DepositSaga {
 
     /** Caller holds member then match lock; pending requests do not reserve capacity. */
     @Transactional
-    public Accepted begin(MatchParticipantEntity p,String type) {
+    public Accepted begin(MatchParticipantEntity p,String type) { return begin(p,type,null); }
+
+    @Transactional
+    public Accepted begin(MatchParticipantEntity p,String type,String gender) {
         String requestId="CREATE".equals(type)?p.getMatch().getCreationRequestId():UUID.randomUUID().toString();
         p.pending(requestId);
         participants.saveAndFlush(p);
         var r=new DepositStore.Request(); r.requestId=requestId; r.userId=p.getUserId();
-        r.matchId=p.getMatch().getId(); r.requestType=type;
+        r.matchId=p.getMatch().getId(); r.requestType=type; r.gender=gender;
         r.deadlineAt=OffsetDateTime.now(ZoneOffset.UTC).plus(timeout);
         store.create(r);
         return new Accepted(requestId,r.matchId,"PENDING");
@@ -78,14 +80,18 @@ public class DepositSaga {
     @Transactional
     public void cancel(MatchParticipantEntity p,String reason) {
         var r=store.locked(p.getRequestId());
+        // A cancelled match keeps its confirmed participant rows as history; only the deposit closes.
+        boolean keep="MATCH_CANCELLED".equals(reason) && p.getParticipationStatus()==ParticipationStatus.CONFIRMED;
         if(r==null) {
             // R10 creates every deposit through begin(); old migrated fixtures have no deposit.
-            p.cancelParticipation(); return;
+            if(!keep) p.cancelParticipation();
+            return;
         }
         if(!Set.of("PENDING","CONFIRMED").contains(r.status)) return;
         r.status="CANCELLED";
-        r.failureCode="CONFIRMATION_FAILED".equals(reason)?"CONFIRMATION_FAILED":null;
-        store.refund(r,reason); store.save(r); p.cancelParticipation();
+        r.failureCode=reason; // PARTICIPANT_CANCELLED / MATCH_CANCELLED / CONFIRMATION_FAILED
+        store.refund(r,reason); store.save(r);
+        if(!keep) p.cancelParticipation();
         if("CREATE".equals(r.requestType)) p.getMatch().failCreation(now());
     }
 
@@ -130,15 +136,8 @@ public class DepositSaga {
         var initial=store.get(requestId);
         if(initial==null || initial.userId!=userId || initial.matchId!=matchId)
             throw new IllegalArgumentException("Unknown or mismatched deposit request");
-        // Same member -> match ordering as create/join/withdrawal. Remote checks precede row lock.
-        String refusal=null;
-        if("user.deposit-charged.v1".equals(topic) && "PENDING".equals(initial.status)) {
-            try { checks.activeMember(userId); }
-            catch(MatchDependencyException e) {
-                if(e.status()>=500) throw e;
-                refusal=e.code();
-            }
-        }
+        // Same member -> match ordering as create/join/withdrawal. user-service already checked
+        // member state and suspension under its member row lock before charging, so no I1 call here.
         var match=matches.findByIdForUpdate(matchId).orElseThrow();
         var r=store.locked(requestId);
         var p=participants.findRequestForUpdate(matchId,userId).orElseThrow();
@@ -149,7 +148,21 @@ public class DepositSaga {
                 if("CONFIRMED".equals(r.status)) break;
                 boolean creation="CREATE".equals(r.requestType);
                 boolean waitlistFirst="JOIN".equals(r.requestType) && priority.hasPriority(matchId);
-                boolean allowed="PENDING".equals(r.status) && current && refusal==null
+                if(!"PENDING".equals(r.status)) {
+                    // Already closed (participant/match cancel, timeout, withdrawal, rejection):
+                    // keep its status and reason, only record the refund for the late charge.
+                    if(!"USER_WITHDRAWN".equals(r.failureCode)) store.refund(r,"CONFIRMATION_FAILED");
+                    break;
+                }
+                if(current && r.gender!=null && match.getGenderGroup()!=GenderGroup.MIXED
+                        && !match.getGenderGroup().name().equals(r.gender)) {
+                    // Owner changed the gender rule after acceptance; never confirm a mismatch.
+                    r.status="FAILED"; r.failureCode="MATCH_GENDER_NOT_ALLOWED";
+                    r.failureMessage="성별 조건이 맞지 않아 보증금 반환을 요청했습니다.";
+                    store.refund(r,"CONFIRMATION_FAILED"); p.fail();
+                    break;
+                }
+                boolean allowed=current
                         && !waitlistFirst
                         && OffsetDateTime.now(ZoneOffset.UTC).isBefore(r.deadlineAt)
                         && match.getStartAt().isAfter(now())
@@ -168,8 +181,7 @@ public class DepositSaga {
                 } else {
                     r.status="CANCELLED";
                     if(r.failureCode==null) {
-                        if(refusal!=null) r.failureCode=refusal;
-                        else if(waitlistFirst) r.failureCode="MATCH_RECRUITMENT_CLOSED";
+                        if(waitlistFirst) r.failureCode="MATCH_RECRUITMENT_CLOSED";
                         else if(!match.getStartAt().isAfter(now())) r.failureCode="MATCH_ALREADY_STARTED";
                         else if(participants.findConfirmedForUpdate(matchId).size()>=match.getMaxParticipant()) r.failureCode="MATCH_FULL";
                         else r.failureCode="CONFIRMATION_FAILED";

@@ -67,6 +67,26 @@ docker compose -f docker-compose.yml -f deploy/single/compose.yml up -d --wait
 - 루트와 다른 점: 앱 8개는 빌드 대신 Docker Hub 이미지를 받는다. 프론트(`sporty-frontend`, 80)를 추가하고 nginx가 `GATEWAY_UPSTREAM=gateway-service:8000`으로 API를 넘긴다. Gateway 8000과 Grafana 3001을 모든 인터페이스에 연다. 나머지 포트는 루트대로 `127.0.0.1`에만 열린다. nginx는 시작할 때 Gateway 주소를 한 번만 찾으므로, gateway-service 컨테이너를 다시 만들었으면 frontend도 `docker compose ... restart frontend`로 다시 띄운다.
 - 브라우저가 8000으로 직접 API를 부르는 구성이면 `.env`의 `CORS_ALLOWED_ORIGIN`을 `http://<공인 IP>`로 맞춘다. nginx를 거치면 같은 출처라 필요 없다.
 
+### A에서 B로 전환 (같은 EC2)
+
+A(`sporty-infra` 프로젝트)와 B(`sporty` 프로젝트)는 Compose 프로젝트 이름이 달라 볼륨도 따로 쓴다(`sporty-infra_mariadb-data`, `sporty_mariadb-data`). Grafana 3001 등 같은 포트를 쓰므로 A를 먼저 내린다.
+
+```bash
+# 1. A를 내린다. -v를 붙이지 않아 A의 DB 볼륨은 남는다(되돌아갈 때 그대로 쓴다).
+docker compose --env-file .env -f deploy/infra/compose.yml down
+
+# 2-1. 기본: B는 새 DB로 시작한다. 첫 기동 때 R10 스키마·서비스 계정·관리자 계정이 다시 만들어진다.
+docker compose -f docker-compose.yml -f deploy/single/compose.yml up -d --wait
+
+# 2-2. A에서 쌓은 데이터를 이어서 쓸 때만: B를 처음 띄우기 전에 볼륨을 복사한다.
+docker volume create sporty_mariadb-data
+docker run --rm -v sporty-infra_mariadb-data:/from -v sporty_mariadb-data:/to alpine sh -c "cp -a /from/. /to/"
+docker compose -f docker-compose.yml -f deploy/single/compose.yml up -d --wait
+```
+
+- B로 전환한 뒤 A로 되돌아가려면 B를 `down`(볼륨 유지)으로 내리고 A를 다시 올린다. A의 DB는 1단계에서 남겨 둔 그대로다.
+- 볼륨을 지우는 `down -v`는 DB를 처음부터 다시 만들 때만 쓴다.
+
 ### 보안 그룹 (단일 서버 인바운드)
 
 | 포트 | 용도 | 허용 대상 |

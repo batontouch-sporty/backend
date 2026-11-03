@@ -57,7 +57,8 @@ class MatchErrorResponseTest {
                 .andExpect(jsonPath("$.code").value("MATCH_NOT_FOUND"));
         mvc.perform(post("/api/matches/abc/participants").header("X-User-Id", "1"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"))
+                .andExpect(jsonPath("$.message").value("ID 형식이 올바르지 않습니다."));
     }
 
     @Test

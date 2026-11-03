@@ -71,14 +71,24 @@ docker compose -f docker-compose.yml -f deploy/single/compose.yml up -d --wait
 
 A(`sporty-infra` 프로젝트)와 B(`sporty` 프로젝트)는 Compose 프로젝트 이름이 달라 볼륨도 따로 쓴다(`sporty-infra_mariadb-data`, `sporty_mariadb-data`). Grafana 3001 등 같은 포트를 쓰므로 A를 먼저 내린다.
 
+1단계: A를 내린다. `-v`를 붙이지 않아 A의 DB 볼륨은 남는다(되돌아갈 때 그대로 쓴다).
+
 ```bash
-# 1. A를 내린다. -v를 붙이지 않아 A의 DB 볼륨은 남는다(되돌아갈 때 그대로 쓴다).
 docker compose --env-file .env -f deploy/infra/compose.yml down
+```
 
-# 2-1. 기본: B는 새 DB로 시작한다. 첫 기동 때 R10 스키마·서비스 계정·관리자 계정이 다시 만들어진다.
+2단계는 아래 둘 중 **하나만** 실행한다.
+
+방법 1(기본): B를 새 DB로 시작한다. 첫 기동 때 R10 스키마·서비스 계정·관리자 계정이 다시 만들어진다.
+
+```bash
 docker compose -f docker-compose.yml -f deploy/single/compose.yml up -d --wait
+```
 
-# 2-2. A에서 쌓은 데이터를 이어서 쓸 때만: B를 처음 띄우기 전에 볼륨을 복사한다.
+방법 2: A에서 쌓은 데이터를 이어서 쓴다. B를 **한 번도 띄우지 않은 상태**에서만 쓴다. 이미 B를 띄운 적이 있으면 먼저 `docker compose -f docker-compose.yml -f deploy/single/compose.yml down -v`로 B의 DB를 지운 뒤 진행한다(B 데이터는 사라진다).
+
+```bash
+docker volume ls -q | grep -x sporty_mariadb-data && echo "B의 DB 볼륨이 이미 있다. 위 안내대로 먼저 지운다" && exit 1
 docker volume create sporty_mariadb-data
 docker run --rm -v sporty-infra_mariadb-data:/from -v sporty_mariadb-data:/to alpine sh -c "cp -a /from/. /to/"
 docker compose -f docker-compose.yml -f deploy/single/compose.yml up -d --wait

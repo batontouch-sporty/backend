@@ -7,14 +7,18 @@ import com.example.sporty.notification.events.dto.MatchStatusChangedEvent;
 import com.example.sporty.notification.events.dto.StartingSoonEvent;
 import com.example.sporty.notification.events.dto.WaitlistPromotedEvent;
 import com.example.sporty.notification.events.dto.WithdrawalRejectedEvent;
+import com.example.sporty.notification.events.metrics.KafkaProcessingMetrics;
 import com.example.sporty.notification.events.repository.ProcessedEventRepository;
 import com.example.sporty.notification.notifications.domain.entity.NotificationEntity;
 import com.example.sporty.notification.notifications.domain.entity.NotificationType;
 import com.example.sporty.notification.notifications.repository.NotificationRepository;
+import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.Clock;
 import java.time.LocalDate;
@@ -51,7 +55,9 @@ public class NotificationEventService {
 
     private final NotificationRepository notificationRepository;
     private final ProcessedEventRepository processedEventRepository;
+    private final EntityManager entityManager;
     private final Clock clock;
+    private final KafkaProcessingMetrics kafkaProcessingMetrics;
 
     // match.joined.v1 → 참가한 회원과 방장에게 알림
     @Transactional
@@ -273,7 +279,23 @@ public class NotificationEventService {
     // 알림과 처리 기록을 한 트랜잭션에 저장한다. 알림 대상이 없어도 처리 기록은 남긴다.
     private void saveAll(String eventId, String topic, List<NotificationEntity> notifications) {
         notificationRepository.saveAll(notifications);
-        processedEventRepository.save(new ProcessedEventEntity(eventId, topic));
+        // 할당 ID의 save는 merge할 수 있으므로 삽입과 PK 충돌로 동시 중복을 구분한다.
+        entityManager.persist(new ProcessedEventEntity(eventId, topic));
+        if (!TransactionSynchronizationManager.isActualTransactionActive()
+                || !TransactionSynchronizationManager.isSynchronizationActive()) {
+            log.warn("Kafka 처리 성공 계측을 생략함: 활성 트랜잭션 없음, topic={}", topic);
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                try {
+                    kafkaProcessingMetrics.recordProcessed(topic);
+                } catch (RuntimeException e) {
+                    log.warn("Kafka 처리 성공 계측 실패: topic={}", topic, e);
+                }
+            }
+        });
     }
 
     private NotificationEntity build(String eventId, Long recipient, NotificationType type,

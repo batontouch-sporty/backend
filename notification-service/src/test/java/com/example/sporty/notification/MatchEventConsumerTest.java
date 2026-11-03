@@ -11,12 +11,16 @@ import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.UUID;
 
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.serialization.StringDeserializer;
+import org.springframework.kafka.support.KafkaHeaders;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -58,6 +62,7 @@ class MatchEventConsumerTest {
     @Autowired EmbeddedKafkaBroker broker;
     @Autowired NotificationRepository notifications;
     @Autowired ProcessedEventRepository processedEvents;
+    @Autowired MeterRegistry meters;
     @MockitoSpyBean NotificationEventService eventService;
 
     // 이벤트 → 알림 저장, 같은 이벤트를 두 번 보내도 한 번만
@@ -147,6 +152,7 @@ class MatchEventConsumerTest {
     @Test
     void brokenMessageGoesToDeadLetterTopic() {
         String broken = "{not json " + UUID.randomUUID();
+        double before = dltCount(KafkaTopics.MATCH_WITHDRAWAL_REJECTED);
 
         try (Consumer<String, String> dlt = dltConsumer()) {
             broker.consumeFromAnEmbeddedTopic(dlt, KafkaTopics.MATCH_WITHDRAWAL_REJECTED + KafkaTopics.DLT_SUFFIX);
@@ -155,13 +161,18 @@ class MatchEventConsumerTest {
             ConsumerRecord<String, String> record = KafkaTestUtils.getSingleRecord(dlt,
                     KafkaTopics.MATCH_WITHDRAWAL_REJECTED + KafkaTopics.DLT_SUFFIX, WAIT);
             assertThat(record.value()).isEqualTo(broken);
+            assertThat(record.headers().lastHeader(KafkaHeaders.DLT_ORIGINAL_TOPIC).value())
+                    .isEqualTo(KafkaTopics.MATCH_WITHDRAWAL_REJECTED.getBytes(StandardCharsets.UTF_8));
         }
+        await().atMost(WAIT).untilAsserted(() ->
+                assertThat(dltCount(KafkaTopics.MATCH_WITHDRAWAL_REJECTED)).isEqualTo(before + 1));
     }
 
     // 저장이 계속 실패하면 처음 1번 + 재시도 3번 뒤 DLT로
     @Test
     void failingEventIsRetriedThreeTimesThenSentToDeadLetterTopic() {
         String eventId = "fail-" + UUID.randomUUID();
+        double before = dltCount(KafkaTopics.MATCH_STATUS_CHANGED);
         doThrow(new IllegalStateException("DB 장애 가정"))
                 .when(eventService).handleMatchStatusChanged(argThat(e -> eventId.equals(e.eventId())));
         String payload = """
@@ -175,9 +186,18 @@ class MatchEventConsumerTest {
             ConsumerRecord<String, String> record = KafkaTestUtils.getSingleRecord(dlt,
                     KafkaTopics.MATCH_STATUS_CHANGED + KafkaTopics.DLT_SUFFIX, WAIT);
             assertThat(record.value()).isEqualTo(payload);
+            assertThat(record.headers().lastHeader(KafkaHeaders.DLT_ORIGINAL_TOPIC).value())
+                    .isEqualTo(KafkaTopics.MATCH_STATUS_CHANGED.getBytes(StandardCharsets.UTF_8));
         }
+        await().atMost(WAIT).untilAsserted(() ->
+                assertThat(dltCount(KafkaTopics.MATCH_STATUS_CHANGED)).isEqualTo(before + 1));
         verify(eventService, times(4)).handleMatchStatusChanged(argThat(e -> eventId.equals(e.eventId())));
         assertThat(processedEvents.existsById(eventId)).isFalse();
+    }
+
+    private double dltCount(String topic) {
+        Counter counter = meters.find("sporty.kafka.dlt.published").tag("topic", topic).counter();
+        return counter == null ? 0 : counter.count();
     }
 
     private Consumer<String, String> dltConsumer() {

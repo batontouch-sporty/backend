@@ -9,6 +9,9 @@ spring:
   cloud:
     config:
       enabled: false
+    # RabbitMQ 없이 돈다. Bus 새로고침은 Compose에서 확인한다.
+    bus:
+      enabled: false
     gateway:
       server:
         webflux:
@@ -71,6 +74,10 @@ management:
   # 8000은 외부에 게시되므로 Gateway 자신의 Actuator는 내부 수집용 포트로 분리한다.
   server:
     port: 8001
+  # Bus를 꺼도 RabbitMQ health는 남아 503이 되므로 테스트에서는 뺀다.
+  health:
+    rabbit:
+      enabled: false
   endpoints:
     web:
       exposure:

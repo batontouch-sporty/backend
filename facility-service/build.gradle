@@ -9,6 +9,8 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-webflux'
     implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
     implementation 'org.springframework.cloud:spring-cloud-starter-config'
+    // config-service의 busrefresh 이벤트를 받아 재시작 없이 설정을 새로 읽는다.
+    implementation 'org.springframework.cloud:spring-cloud-starter-bus-amqp'
 
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'

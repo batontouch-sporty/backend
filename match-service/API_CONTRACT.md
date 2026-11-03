@@ -56,3 +56,10 @@ DELETE의 권한·기록 보존·수신자·중복 요청 방지와 CLOSED 상�
 # R10 포인트 Saga 변경 (작업 브랜치)
 
 생성·참가 202 접수, 본인 요청 상태 조회, CONFIRMED 기준 조회, 참가 취소 시 비동기 보증금 반환 계약은 [POINT_SAGA.md](POINT_SAGA.md)를 따른다. 아래 기존 API 기록과 달라진 항목은 R10 적용 시 새 계약으로 전환한다. PR #111 및 회원·포인트 코드와 함께 적용하며, 기존 R8 환경에는 이 변경만 배포하지 않는다.
+
+## 출석 수정·A11 참가자 필드 (#125)
+
+- `PATCH /api/matches/{matchId}/participants/{participantId}/attendance` (Gateway `/match-service/...`), X-User-Id 필수, body `{"attendance":"ATTENDED"|"NO_SHOW"}`. 응답 200 `{participantId, userId, attendance}`.
+- 매치 행 잠금 후 검사. 미인증 401 UNAUTHORIZED, 잘못된 값·누락 400 INVALID_INPUT, 없는 매치 404 MATCH_NOT_FOUND, 방장 아님 403 FORBIDDEN, `start_at <= 현재 < end_at`이 아니거나 CANCELLED·COMPLETED 400 ATTENDANCE_NOT_EDITABLE(스케줄러 지연과 무관하게 시각 기준), 그 매치의 CONFIRMED 참가자가 아니면 404 PARTICIPANT_NOT_FOUND. 오류 본문은 기존 `{code, message}`.
+- 출석 기본값 ATTENDED. 종료 시 출석 정산 요청 발행과 상태 전이 스케줄러는 [POINT_SAGA.md](POINT_SAGA.md) "상태 전이·출석 정산"을 따른다.
+- A11 상세 `participants[]` 항목에 `participantId`(match_participant_id), `attendance`(ATTENDED/NO_SHOW)를 추가했다. 기존 profileId·nickname·imageUrl·role은 유지한다.

@@ -73,6 +73,7 @@ public class MatchParticipantEntity {
         participationStatus = ParticipationStatus.PENDING;
         matchParticipantStatus = "ATTENDED";
     }
+    public void markAttendance(String attendance) { matchParticipantStatus = Objects.requireNonNull(attendance); }
     public void confirm() { participationStatus = ParticipationStatus.CONFIRMED; }
     public void fail() { participationStatus = ParticipationStatus.FAILED; }
     public void cancelParticipation() { participationStatus = ParticipationStatus.CANCELLED; }

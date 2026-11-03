@@ -249,6 +249,31 @@ public class MatchCrudService {
         return new MatchDtos.Cancelled(match.getId(), match.getStatus());
     }
 
+    /** Owner-only edit between start and end, decided by time even if the scheduler is late. */
+    @Transactional
+    public MatchDtos.Attendance attendance(
+            Long matchId, Long participantId, Long userId, MatchDtos.AttendanceUpdate request) {
+        validId(matchId);
+        validId(participantId);
+        validId(userId);
+        var match = locked(matchId);
+        owner(matchId, userId, "FORBIDDEN");
+        var now = now();
+        if (!Set.of(MatchStatus.RECRUITING, MatchStatus.CLOSED, MatchStatus.IN_PROGRESS).contains(match.getStatus())
+                || match.getStartAt().isAfter(now)
+                || !now.isBefore(match.getEndAt()))
+            throw problem(400, "ATTENDANCE_NOT_EDITABLE", "모임 진행 중에만 출석을 수정할 수 있습니다.");
+        var row =
+                participants
+                        .findById(participantId)
+                        .filter(p -> p.getMatch().getId().equals(matchId)
+                                && p.getParticipationStatus() == ParticipationStatus.CONFIRMED)
+                        .orElseThrow(() -> problem(404, "PARTICIPANT_NOT_FOUND", "참가자를 찾을 수 없습니다."));
+        row.markAttendance(request.attendance().name());
+        participants.flush();
+        return new MatchDtos.Attendance(row.getId(), row.getUserId(), row.getMatchParticipantStatus());
+    }
+
     public List<MatchDtos.Mine> mine(Long userId) {
         validId(userId);
         var rows = participants.findAllByUserIdOrderByMatch_StartAtDescMatch_IdDesc(userId);
@@ -287,7 +312,9 @@ public class MatchCrudService {
                                             p == null ? null : p.profileId(),
                                             p == null ? "알 수 없음" : p.nickname(),
                                             p == null ? null : p.imageUrl(),
-                                            row.getRole());
+                                            row.getRole(),
+                                            row.getId(),
+                                            row.getMatchParticipantStatus());
                                 })
                         .toList();
         return new MatchDtos.Detail(

@@ -90,7 +90,14 @@ public final class MatchDtos {
             Boolean isFree) {}
 
     public record Participant(
-            Long profileId, String nickname, String imageUrl, MatchParticipantRole role) {}
+            Long profileId, String nickname, String imageUrl, MatchParticipantRole role,
+            Long participantId, String attendance) {}
+
+    public enum AttendanceValue { ATTENDED, NO_SHOW }
+
+    public record AttendanceUpdate(@NotNull(message = "필수입니다.") AttendanceValue attendance) {}
+
+    public record Attendance(Long participantId, Long userId, String attendance) {}
 
     public record Detail(
             Long matchId,

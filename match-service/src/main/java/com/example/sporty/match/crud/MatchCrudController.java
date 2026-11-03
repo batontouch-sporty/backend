@@ -69,6 +69,15 @@ public class MatchCrudController {
         return service.cancel(matchId, user(identity, true));
     }
 
+    @PatchMapping("/{matchId}/participants/{participantId}/attendance")
+    public MatchDtos.Attendance attendance(
+            @PathVariable Long matchId,
+            @PathVariable Long participantId,
+            @RequestHeader(value = "X-User-Id", required = false) String identity,
+            @Valid @RequestBody MatchDtos.AttendanceUpdate request) {
+        return service.attendance(matchId, participantId, user(identity, true), request);
+    }
+
     private static Long user(String identity, boolean required) {
         if (identity == null && !required) return null;
         try {

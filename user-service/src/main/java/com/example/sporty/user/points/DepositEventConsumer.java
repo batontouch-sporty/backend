@@ -1,5 +1,6 @@
 package com.example.sporty.user.points;
 
+import com.example.sporty.user.commons.exception.users.UserNotFoundException;
 import com.example.sporty.user.points.PointSettlementService.Action;
 import com.example.sporty.user.points.PointSettlementService.Command;
 import com.example.sporty.user.points.PointSettlementService.Result;
@@ -26,7 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * 매칭의 보증금·출석 정산 요청을 받아 포인트를 정산하고, 결과 이벤트를 같은 트랜잭션에 Outbox로 남긴다.
  * 발행은 탈퇴 Saga와 같은 WithdrawalOutboxRelay가 한다. 같은 eventId는 PointSettlementService가 processed_events로 거른다.
- * 필수 값 누락·알 수 없는 값은 IllegalArgumentException으로 재시도 없이 "<원본 토픽>.DLT"로 간다(WithdrawalSagaConfig).
+ * 필수 값 누락·알 수 없는 값·없는 회원·차감 이력 없는 출석 정산은 IllegalArgumentException으로 재시도 없이 "<원본 토픽>.DLT"로 간다(WithdrawalSagaConfig).
  */
 @Slf4j
 @Component
@@ -71,7 +72,13 @@ public class DepositEventConsumer {
         }
         Command cmd = new Command(text(body, "eventId"), UUID.fromString(text(body, "requestId")),
                 positive(body, "userId"), positive(body, "matchId"), action);
-        Result result = points.apply(cmd);
+        Result result;
+        try {
+            result = points.apply(cmd);
+        } catch (UserNotFoundException | IllegalStateException e) {
+            // 없는 회원·차감 이력 없는 출석 정산은 다시 해도 같다. IllegalArgumentException으로 바꿔 바로 DLT로 보낸다.
+            throw new IllegalArgumentException(e.getMessage(), e);
+        }
         log.info("포인트 정산: topic={}, requestId={}, userId={}, outcome={}",
                 topic, cmd.requestId(), cmd.userId(), result.outcome());
 
@@ -92,14 +99,16 @@ public class DepositEventConsumer {
                             .atZone(PointSettlementService.SEOUL).toOffsetDateTime().toString()));
                 }
             }
-            // DUPLICATE는 처음 처리 때 이미 남겼다. 노쇼 몰수 뒤 반환(ALREADY_SETTLED)·탈퇴 회원 반환(WITHDRAWN)은
-            // 계약에 맞는 결과값이 없어 보내지 않는다.
-            default -> {
-                if (action == Action.REFUND && result.outcome() != PointSettlementService.Outcome.DUPLICATE) {
-                    log.warn("반환 결과 미발행: requestId={}, userId={}, outcome={}",
+            // 노쇼 몰수 뒤 반환·탈퇴 회원 반환은 돌려줄 포인트가 없다. 매칭의 반환 대기가 남지 않게 RETURNED, 0으로 닫는다.
+            case ALREADY_SETTLED, WITHDRAWN -> {
+                if (action == Action.REFUND) {
+                    log.warn("반환할 보증금 없음, 0으로 완료: requestId={}, userId={}, outcome={}",
                             cmd.requestId(), cmd.userId(), result.outcome());
+                    publish(REFUND_COMPLETED, cmd, Map.of("outcome", "RETURNED", "creditedPoints", 0));
                 }
             }
+            // DUPLICATE는 처음 처리 때 이미 남겼다.
+            case DUPLICATE -> { }
         }
     }
 

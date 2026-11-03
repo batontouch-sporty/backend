@@ -113,8 +113,10 @@ class DepositEventConsumerTest {
     }
 
     @Test
-    void withdrawnMemberIsRejectedAndLateRefundIsNotPublished() throws Exception {
+    void withdrawnMemberIsRejectedAndLateRefundClosesWithZero() throws Exception {
         long uid = member(50);
+        UUID charged = UUID.randomUUID();
+        charge(uid, charged);
         UserEntity user = users.findById(uid).orElseThrow();
         user.startWithdrawal();
         user.completeWithdrawal();
@@ -122,8 +124,42 @@ class DepositEventConsumerTest {
         charge(uid, UUID.randomUUID());
         assertThat(events(uid, CHARGE_REJECTED)).singleElement()
                 .satisfies(e -> assertThat(e.path("reason").asText()).isEqualTo("USER_NOT_ACTIVE"));
-        refund(uid, UUID.randomUUID());
-        assertThat(events(uid, REFUND_COMPLETED)).isEmpty();
+        refund(uid, charged);
+        assertThat(events(uid, REFUND_COMPLETED)).singleElement().satisfies(e -> {
+            assertThat(e.path("outcome").asText()).isEqualTo("RETURNED");
+            assertThat(e.path("creditedPoints").asInt()).isZero();
+            assertThat(e.path("requestId").asText()).isEqualTo(charged.toString());
+        });
+        assertThat(balance(uid)).isEqualTo(40);
+        // 탈퇴 회원 출석 정산은 결과를 보내지 않는다.
+        long before = eventCount(uid);
+        attendance(uid, charged, "ATTENDED");
+        assertThat(eventCount(uid)).isEqualTo(before);
+    }
+
+    @Test
+    void refundAfterNoShowForfeitClosesWithZero() throws Exception {
+        long uid = member(50);
+        UUID request = UUID.randomUUID();
+        charge(uid, request);
+        attendance(uid, request, "NO_SHOW");
+        refund(uid, request);
+        assertThat(events(uid, REFUND_COMPLETED)).singleElement().satisfies(e -> {
+            assertThat(e.path("outcome").asText()).isEqualTo("RETURNED");
+            assertThat(e.path("creditedPoints").asInt()).isZero();
+        });
+        assertThat(balance(uid)).isEqualTo(40);
+    }
+
+    // 재시도해도 같은 결과인 실패는 IllegalArgumentException(비재시도 → 바로 DLT)으로 나간다.
+    @Test
+    void unknownMemberAndAttendanceWithoutChargeAreNotRetryable() {
+        assertThatThrownBy(() -> charge(Long.MAX_VALUE, UUID.randomUUID()))
+                .isInstanceOf(IllegalArgumentException.class);
+        long uid = member(50);
+        assertThatThrownBy(() -> attendance(uid, UUID.randomUUID(), "ATTENDED"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(balance(uid)).isEqualTo(50);
     }
 
     @Test

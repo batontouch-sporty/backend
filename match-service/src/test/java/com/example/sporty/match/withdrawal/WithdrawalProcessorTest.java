@@ -524,9 +524,7 @@ class WithdrawalProcessorTest {
                         org.springframework.web.server.ResponseStatusException.class,
                         ex -> assertThat(ex.getStatusCode().value()).isEqualTo(409));
         assertThatThrownBy(() -> api().result(r.sagaId(), 2L, r.eventId(), "not-a-time"))
-                .isInstanceOfSatisfying(
-                        org.springframework.web.server.ResponseStatusException.class,
-                        ex -> assertThat(ex.getStatusCode().value()).isEqualTo(400));
+                .isInstanceOf(WithdrawalResultController.InvalidDeadline.class);
     }
 
     // HTTP 응답에서도 마감 전 409·형식 오류 400이 그대로다(MatchFallbackAdvice가 500으로 바꾸지 않는다)
@@ -549,7 +547,8 @@ class WithdrawalProcessorTest {
                                 .param("userId", "2")
                                 .param("requestEventId", r.eventId())
                                 .param("deadlineAt", "not-a-time"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
     }
 
     // 미처리 -> NONE 뒤 같은 요청이 오면 DEADLINE_EXCEEDED로만 거절되고 아무것도 정리되지 않는다

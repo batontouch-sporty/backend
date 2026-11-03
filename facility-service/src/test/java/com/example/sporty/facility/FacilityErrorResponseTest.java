@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import org.junit.jupiter.api.Test;
@@ -53,6 +54,7 @@ class FacilityErrorResponseTest {
     void 표준_404_405는_상태_코드를_지킨다() throws Exception {
         mvc.perform(post("/api/services/1"))
                 .andExpect(status().isMethodNotAllowed())
+                .andExpect(header().exists("Allow"))
                 .andExpect(jsonPath("$.code").value("METHOD_NOT_ALLOWED"));
         mvc.perform(get("/api/no-such-path"))
                 .andExpect(status().isNotFound())

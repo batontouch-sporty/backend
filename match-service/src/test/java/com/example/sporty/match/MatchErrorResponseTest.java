@@ -65,6 +65,7 @@ class MatchErrorResponseTest {
     void standardMvcErrorsKeepTheirStatus() throws Exception {
         mvc.perform(patch("/health-check"))
                 .andExpect(status().isMethodNotAllowed())
+                .andExpect(header().exists("Allow"))
                 .andExpect(jsonPath("$.code").value("METHOD_NOT_ALLOWED"));
         mvc.perform(get("/api/no-such-path"))
                 .andExpect(status().isNotFound())
@@ -76,7 +77,8 @@ class MatchErrorResponseTest {
     void withdrawalResultBadRequestStays400() throws Exception {
         mvc.perform(get("/internal/withdrawals/s1")
                         .param("userId", "1").param("requestEventId", "e1").param("deadlineAt", "not-a-time"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
         mvc.perform(get("/internal/withdrawals/s1")
                         .param("userId", "abc").param("requestEventId", "e1").param("deadlineAt", "not-a-time"))
                 .andExpect(status().isBadRequest())

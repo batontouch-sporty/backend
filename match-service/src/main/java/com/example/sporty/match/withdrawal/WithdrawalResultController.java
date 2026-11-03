@@ -1,9 +1,11 @@
 package com.example.sporty.match.withdrawal;
 
+import com.example.sporty.match.integration.MatchDependencyAdvice;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -62,7 +64,7 @@ public class WithdrawalResultController {
         try {
             deadline = OffsetDateTime.parse(deadlineAt);
         } catch (DateTimeParseException ex) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "deadlineAt 형식 오류");
+            throw new InvalidDeadline();
         }
         return tx.execute(
                 s -> {
@@ -73,5 +75,14 @@ public class WithdrawalResultController {
                         throw new ResponseStatusException(HttpStatus.CONFLICT, "마감 전이라 아직 결정할 수 없음");
                     return new WithdrawalStore.SagaResult(sagaId, requestEventId, userId, "NONE");
                 });
+    }
+
+    // deadlineAt 형식 오류는 다른 형식 오류와 같이 400 INVALID_INPUT으로 답한다(명세 공통 규칙 ③).
+    @ExceptionHandler(InvalidDeadline.class)
+    ResponseEntity<MatchDependencyAdvice.Error> invalidDeadline() {
+        return ResponseEntity.badRequest().body(new MatchDependencyAdvice.Error("INVALID_INPUT", "deadlineAt 형식이 올바르지 않습니다."));
+    }
+
+    static class InvalidDeadline extends RuntimeException {
     }
 }

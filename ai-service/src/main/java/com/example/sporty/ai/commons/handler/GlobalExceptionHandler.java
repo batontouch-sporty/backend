@@ -62,7 +62,9 @@ public class GlobalExceptionHandler {
                 case METHOD_NOT_ALLOWED -> "지원하지 않는 요청 방식입니다.";
                 default -> "요청을 처리할 수 없습니다.";
             };
-            return error(status, status.name(), message);
+            // 405의 Allow 같은 표준 응답 헤더는 그대로 넘긴다.
+            return ResponseEntity.status(status).headers(standard.getHeaders())
+                    .body(error(status, status.name(), message).getBody());
         }
         log.error("처리하지 않은 예외", e);
         return error(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_SERVER_ERROR", "서버 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");

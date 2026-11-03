@@ -37,7 +37,8 @@ public class MatchFallbackAdvice {
                 case METHOD_NOT_ALLOWED -> "지원하지 않는 요청 방식입니다.";
                 default -> "요청을 처리할 수 없습니다.";
             };
-            return ResponseEntity.status(status).body(new Error(status.name(), message));
+            // 405의 Allow 같은 표준 응답 헤더는 그대로 넘긴다.
+            return ResponseEntity.status(status).headers(standard.getHeaders()).body(new Error(status.name(), message));
         }
         log.error("처리하지 않은 예외", e);
         return ResponseEntity.internalServerError()

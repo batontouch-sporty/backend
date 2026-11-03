@@ -8,9 +8,12 @@ import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
+import java.time.LocalDateTime;
 import java.util.Date;
+import org.hibernate.annotations.DynamicUpdate;
 
 @Entity
+@DynamicUpdate
 @Builder
 @Table(name = "user")
 @Getter
@@ -46,6 +49,33 @@ public class UserEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 10)
     private Role role = Role.USER;
+
+    @Builder.Default
+    @Column(nullable = false)
+    private int points = 50;
+
+    @Column(nullable = false)
+    private int attendanceRewardCount;
+
+    private LocalDateTime suspendedUntil;
+
+    public void changePointsTo(int balance) {
+        if (balance < 0 || balance > 100) throw new IllegalArgumentException("포인트 범위 오류");
+        this.points = balance;
+    }
+
+    public boolean recordAttendance() {
+        attendanceRewardCount = (attendanceRewardCount + 1) % 5;
+        return attendanceRewardCount == 0;
+    }
+
+    public void suspendUntil(LocalDateTime deadline) {
+        this.suspendedUntil = deadline;
+    }
+
+    public void clearSuspension() {
+        this.suspendedUntil = null;
+    }
 
     @Column(name ="withdrawn_at")
     private Date withdrawnAt;

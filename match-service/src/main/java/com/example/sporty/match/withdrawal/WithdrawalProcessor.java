@@ -80,6 +80,7 @@ public class WithdrawalProcessor {
         var blocking =
                 matches.stream()
                         .filter(m -> "OWNER".equals(m.role()))
+                        .filter(m -> !Set.of("CREATION_PENDING", "CREATION_FAILED").contains(m.status()))
                         .filter(m -> !Set.of("CANCELLED", "COMPLETED").contains(m.status()))
                         .filter(
                                 m ->
@@ -104,7 +105,8 @@ public class WithdrawalProcessor {
                                 .toList();
                 store.cancel(m.id(), clock.instant());
                 canceled.add(m.id());
-                status(r, m, m.status(), "CANCELLED", r.userId(), recipients);
+                if (!Set.of("CREATION_PENDING", "CREATION_FAILED").contains(m.status()))
+                    status(r, m, m.status(), "CANCELLED", r.userId(), recipients);
             } else {
                 store.leave(m.id(), r.userId());
                 left.add(m.id());

@@ -52,6 +52,32 @@ public class MatchParticipantEntity {
     @Column(name = "updated_at", columnDefinition = "TIMESTAMP(6)", nullable = false)
     private Instant updatedAt;
 
+    @Column(name = "request_id", length = 36, nullable = false, unique = true)
+    private String requestId;
+
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    @Column(name = "participation_status", length = 20, nullable = false)
+    private ParticipationStatus participationStatus = ParticipationStatus.CONFIRMED;
+
+    @Column(name = "match_participant_status", length = 20, nullable = false)
+    private String matchParticipantStatus = "ATTENDED";
+
+    public String getRequestId() { return requestId; }
+    public ParticipationStatus getParticipationStatus() { return participationStatus; }
+    public String getMatchParticipantStatus() { return matchParticipantStatus; }
+    public void pending(String id) {
+        if (participationStatus == ParticipationStatus.PENDING)
+            throw new IllegalStateException("Request is already pending");
+        requestId = Objects.requireNonNull(id);
+        participationStatus = ParticipationStatus.PENDING;
+        matchParticipantStatus = "ATTENDED";
+    }
+    public void markAttendance(String attendance) { matchParticipantStatus = Objects.requireNonNull(attendance); }
+    public void confirm() { participationStatus = ParticipationStatus.CONFIRMED; }
+    public void fail() { participationStatus = ParticipationStatus.FAILED; }
+    public void cancelParticipation() { participationStatus = ParticipationStatus.CANCELLED; }
+
     protected MatchParticipantEntity() {}
 
     public MatchParticipantEntity(MatchEntity match, long userId, MatchParticipantRole role) {
@@ -59,6 +85,8 @@ public class MatchParticipantEntity {
         if (userId <= 0) throw new IllegalArgumentException("userId must be positive");
         this.userId = userId;
         this.role = Objects.requireNonNull(role);
+        this.requestId = role == MatchParticipantRole.OWNER
+                ? match.getCreationRequestId() : java.util.UUID.randomUUID().toString();
     }
 
     public Long getId() { return id; }

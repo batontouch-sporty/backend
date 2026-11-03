@@ -14,6 +14,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
@@ -26,6 +29,9 @@ public class InternalUserService {
     private final UserRepository userRepository;
     private final ProfileRepository profileRepository;
     private final SportPreferenceRepository sportPreferenceRepository;
+    private final Clock clock;
+
+    private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
 
     // [I1] 회원 단건 조회
     // 탈퇴 중·탈퇴한 회원도 404가 아니라 status를 그대로 준다. 참가 가능 여부는 호출하는 쪽이 판단한다.
@@ -46,7 +52,9 @@ public class InternalUserService {
                         .sorted()
                         .toList();
 
-        return InternalUserResponseDto.fromEntity(user, profile, sportTypes);
+        // 3. 참가 정지 여부는 KST 현재 시각과 비교한다(정지 종료 시각이 KST로 저장됨)
+        LocalDateTime now = LocalDateTime.ofInstant(clock.instant(), SEOUL);
+        return InternalUserResponseDto.fromEntity(user, profile, sportTypes, now);
     }
 
     // [I2] 회원 닉네임 일괄 조회

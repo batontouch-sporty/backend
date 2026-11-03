@@ -19,8 +19,8 @@ import javax.sql.DataSource;
 @ConditionalOnProperty(name = "match.withdrawal.enabled", havingValue = "true")
 public class WithdrawalConfiguration {
     @Bean
-    WithdrawalStore withdrawalStore(JdbcTemplate jdbc, ObjectMapper mapper) {
-        return new WithdrawalStore(jdbc, mapper);
+    WithdrawalStore withdrawalStore(JdbcTemplate jdbc, ObjectMapper mapper, com.example.sporty.match.deposit.DepositSaga deposits) {
+        var store=new WithdrawalStore(jdbc,mapper); store.setDeposits(deposits); return store;
     }
 
     @Bean

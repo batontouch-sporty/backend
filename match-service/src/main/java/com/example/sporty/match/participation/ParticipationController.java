@@ -8,16 +8,20 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/matches")
 public class ParticipationController {
     private final ParticipationService service;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.example.sporty.match.deposit.DepositSaga deposits;
 
     public ParticipationController(ParticipationService service) {
         this.service = service;
     }
 
     @PostMapping("/{matchId}/participants")
-    public ResponseEntity<ParticipationService.Participation> join(
+    public ResponseEntity<?> join(
             @PathVariable Long matchId,
             @RequestHeader(value = "X-User-Id", required = false) String identity) {
-        return ResponseEntity.status(201).body(service.join(matchId, userId(identity)));
+        var result=service.join(matchId,userId(identity));
+        return deposits.isEnabled() ? ResponseEntity.accepted().body(new com.example.sporty.match.deposit.DepositSaga.Accepted(result.requestId(),matchId,"PENDING"))
+                : ResponseEntity.status(201).body(result);
     }
 
     @DeleteMapping("/{matchId}/participants/me")

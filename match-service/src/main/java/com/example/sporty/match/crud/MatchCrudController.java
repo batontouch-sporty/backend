@@ -11,16 +11,21 @@ import java.util.List;
 @RequestMapping("/api/matches")
 public class MatchCrudController {
     private final MatchCrudService service;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.example.sporty.match.deposit.DepositSaga deposits;
 
     public MatchCrudController(MatchCrudService service) {
         this.service = service;
     }
 
     @PostMapping
-    public ResponseEntity<Long> create(
+    public ResponseEntity<?> create(
             @RequestHeader(value = "X-User-Id", required = false) String identity,
             @Valid @RequestBody MatchDtos.Create request) {
-        return ResponseEntity.status(201).body(service.create(user(identity, true), request));
+        long userId=user(identity,true);
+        var result=service.createResult(userId,request);
+        return deposits.isEnabled() ? ResponseEntity.accepted().body(result.accepted())
+                : ResponseEntity.status(201).body(result.matchId());
     }
 
     @GetMapping
@@ -62,6 +67,16 @@ public class MatchCrudController {
             @PathVariable Long matchId,
             @RequestHeader(value = "X-User-Id", required = false) String identity) {
         return service.cancel(matchId, user(identity, true));
+    }
+
+    @PatchMapping("/{matchId}/participants/{participantId}/attendance")
+    public ResponseEntity<Void> attendance(
+            @PathVariable Long matchId,
+            @PathVariable Long participantId,
+            @RequestHeader(value = "X-User-Id", required = false) String identity,
+            @Valid @RequestBody MatchDtos.AttendanceUpdate request) {
+        service.attendance(matchId, participantId, user(identity, true), request);
+        return ResponseEntity.noContent().build();
     }
 
     private static Long user(String identity, boolean required) {

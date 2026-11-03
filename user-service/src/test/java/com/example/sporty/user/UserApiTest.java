@@ -80,6 +80,29 @@ class UserApiTest {
     }
 
     @Test
+    void pointsAndHistoryUseAuthenticatedMemberAndValidatePaging() throws Exception {
+        String email = email();
+        signup(email, nickname()).andExpect(status().isCreated());
+        signup(email(), nickname()).andExpect(status().isCreated());
+        long uid = users.findByEmail(email).orElseThrow().getId();
+        String path = "/api/users/me/points";
+        mvc.perform(get(path)).andExpect(status().isUnauthorized());
+        mvc.perform(get(path).header(AuthHeaders.USER_ID, uid))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.points").value(50))
+                .andExpect(jsonPath("$.attendanceRewardCount").value(0))
+                .andExpect(jsonPath("$.participationSuspended").value(false))
+                .andExpect(jsonPath("$.suspendedUntil").value(org.hamcrest.Matchers.nullValue()));
+        mvc.perform(get(path + "/history").header(AuthHeaders.USER_ID, uid))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.size").value(20)).andExpect(jsonPath("$.content[0].reason").value("SIGNUP"))
+                .andExpect(jsonPath("$.content[0].delta").value(50)).andExpect(jsonPath("$.content[0].sourceEventId").doesNotExist());
+        mvc.perform(get(path + "/history").header(AuthHeaders.USER_ID, uid).param("size", "101"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+        mvc.perform(get(path).header(AuthHeaders.USER_ID, 99999999))
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
+    }
+
+    @Test
     void signupIgnoresRoleInRequestBody() throws Exception {
         var body = signupBody(email(), nickname());
         body.put("role", "ADMIN");

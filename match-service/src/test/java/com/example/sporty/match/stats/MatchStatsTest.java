@@ -65,19 +65,19 @@ class MatchStatsTest {
             waitlist.saveAndFlush(new MatchWaitlistEntity(match, 3L));
         }
         var stats = service.getStats();
-        assertThat(stats.matches().total()).isEqualTo(5);
+        assertThat(stats.matches().total()).isEqualTo(7);
         assertThat(stats.matches().byStatus().values()).containsOnly(1L);
-        assertThat(stats.matches().byStatus()).hasSize(5);
-        assertThat(stats.participants().total()).isEqualTo(10);
+        assertThat(stats.matches().byStatus()).hasSize(7);
+        assertThat(stats.participants().total()).isEqualTo(14);
         mvc.perform(get("/api/admin/stats").header("X-User-Id", "1").header("X-User-Role", "ADMIN"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.matches.total").value(5))
+                .andExpect(jsonPath("$.matches.total").value(7))
                 .andExpect(jsonPath("$.matches.byStatus.RECRUITING").value(1))
                 .andExpect(jsonPath("$.matches.byStatus.CLOSED").value(1))
                 .andExpect(jsonPath("$.matches.byStatus.IN_PROGRESS").value(1))
                 .andExpect(jsonPath("$.matches.byStatus.COMPLETED").value(1))
                 .andExpect(jsonPath("$.matches.byStatus.CANCELLED").value(1))
-                .andExpect(jsonPath("$.participants.total").value(10));
+                .andExpect(jsonPath("$.participants.total").value(14));
     }
 
     @Test

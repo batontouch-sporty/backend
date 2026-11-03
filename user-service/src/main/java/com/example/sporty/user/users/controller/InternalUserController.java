@@ -1,5 +1,6 @@
 package com.example.sporty.user.users.controller;
 
+import com.example.sporty.user.points.PointSettlementService;
 import com.example.sporty.user.users.domain.dto.InternalProfileResponseDto;
 import com.example.sporty.user.users.domain.dto.InternalUserResponseDto;
 import com.example.sporty.user.users.service.InternalUserService;
@@ -16,10 +17,13 @@ import java.util.List;
 public class InternalUserController {
 
     private final InternalUserService internalUserService;
+    private final PointSettlementService pointSettlementService;
 
     // [I1] 회원 단건 조회
     @GetMapping("/{id}")
     public ResponseEntity<InternalUserResponseDto> getUser(@PathVariable("id") Long id) {
+        // 해제할 때가 지난 정지는 먼저 풀고(별도 쓰기 트랜잭션) 읽는다.
+        pointSettlementService.expireIfDue(id);
         return ResponseEntity.ok(internalUserService.getUser(id));
     }
 

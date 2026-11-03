@@ -46,7 +46,8 @@ public class WaitlistService {
                 matches.findByIdForUpdate(matchId)
                         .orElseThrow(() -> problem(404, "MATCH_NOT_FOUND", "매치를 찾을 수 없습니다."));
         var existing = participants.findByMatch_IdAndUserId(matchId, userId);
-        if (existing.isPresent()) {
+        if (existing.filter(p -> p.getParticipationStatus()==ParticipationStatus.CONFIRMED
+                || p.getParticipationStatus()==ParticipationStatus.PENDING).isPresent()) {
             if (existing.get().getRole() == MatchParticipantRole.OWNER)
                 throw problem(400, "MATCH_OWNER_CANNOT_WAIT", "방장은 대기 등록할 수 없습니다.");
             throw problem(409, "MATCH_ALREADY_JOINED", "이미 참가 중인 매치입니다.");

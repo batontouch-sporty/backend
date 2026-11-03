@@ -34,7 +34,7 @@ public interface MatchRepository extends JpaRepository<MatchEntity, Long>, JpaSp
     @Query("""
             select p.match.id as matchId, count(p) as participantCount
             from MatchParticipantEntity p
-            where p.match.id in :matchIds
+            where p.match.id in :matchIds and p.participationStatus='CONFIRMED'
             group by p.match.id
             """)
     List<ParticipantCount> countParticipantsByMatchIds(@Param("matchIds") List<Long> matchIds);

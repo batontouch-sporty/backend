@@ -22,6 +22,11 @@ public interface UserRepository extends JpaRepository<UserEntity, Long> {
     @Query("select u from UserEntity u where u.id = :id")
     Optional<UserEntity> findForUpdate(Long id);
 
+    @Query("select u.id from UserEntity u where u.suspendedUntil <= :now and u.status <> com.example.sporty.user.users.domain.entity.UserStatus.WITHDRAWN")
+    List<Long> findDueSuspensions(java.time.LocalDateTime now);
+
+    boolean existsByIdAndSuspendedUntilLessThanEqual(Long id, java.time.LocalDateTime now);
+
     // [A28] 상태별 회원 수 [status, count]
     @Query("select u.status, count(u) from UserEntity u group by u.status")
     List<Object[]> countGroupByStatus();

@@ -34,6 +34,8 @@ public class MatchCrudService {
     private final MemberLocks locks;
     private final ParticipationEvents events;
     private final TransactionTemplate transactions;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.example.sporty.match.deposit.DepositSaga deposits;
 
     public MatchCrudService(
             MatchRepository matches,
@@ -54,6 +56,13 @@ public class MatchCrudService {
 
     @Transactional
     public Long create(Long userId, MatchDtos.Create request) {
+        return createResult(userId,request).matchId();
+    }
+
+    public record CreationResult(long matchId,com.example.sporty.match.deposit.DepositSaga.Accepted accepted) {}
+
+    @Transactional
+    public CreationResult createResult(Long userId, MatchDtos.Create request) {
         validId(userId);
         validCapacity(request.maxParticipant());
         validPeriod(request.startAt(), request.endAt());
@@ -61,10 +70,13 @@ public class MatchCrudService {
         var match = facility.create(userId, request.details(), request.serviceId());
         // Remote checks can take time; never commit a newly created match already in the past.
         validPeriod(request.startAt(), request.endAt());
+        if(deposits.isEnabled()) match.beginCreation();
         matches.saveAndFlush(match);
-        participants.saveAndFlush(
-                new MatchParticipantEntity(match, userId, MatchParticipantRole.OWNER));
-        return match.getId();
+        var owner = new MatchParticipantEntity(match,userId,MatchParticipantRole.OWNER);
+        com.example.sporty.match.deposit.DepositSaga.Accepted accepted=null;
+        if(deposits.isEnabled()) accepted=deposits.begin(owner,"CREATE");
+        else participants.saveAndFlush(owner);
+        return new CreationResult(match.getId(),accepted);
     }
 
     public List<MatchDtos.Summary> search(MatchDtos.Search q) {
@@ -74,6 +86,7 @@ public class MatchCrudService {
                 matches.findAll(
                         (root, query, cb) -> {
                             var filters = new ArrayList<Predicate>();
+                            filters.add(cb.not(root.get("status").in(MatchStatus.CREATION_PENDING,MatchStatus.CREATION_FAILED)));
                             if (q.serviceId() != null)
                                 filters.add(cb.equal(root.get("facilityId"), q.serviceId()));
                             if (q.titleKeyword() != null)
@@ -150,7 +163,9 @@ public class MatchCrudService {
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public MatchDtos.Detail detail(Long matchId, Long viewer) {
         validId(matchId);
-        return toDetail(matches.findById(matchId).orElseThrow(MatchCrudService::notFound), viewer);
+        var m=matches.findById(matchId).orElseThrow(MatchCrudService::notFound);
+        if(Set.of(MatchStatus.CREATION_PENDING,MatchStatus.CREATION_FAILED).contains(m.getStatus())) throw notFound();
+        return toDetail(m,viewer);
     }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -184,7 +199,7 @@ public class MatchCrudService {
                     var from = match.getStatus();
                     match.update(request.details(match.getSportType()), snapshot);
                     var next =
-                            current >= request.maxParticipant()
+                            current >= request.maxParticipant() || (deposits.isEnabled() && deposits.hasWaitlistPriority(matchId))
                                     ? MatchStatus.CLOSED
                                     : MatchStatus.RECRUITING;
                     if (from != next) {
@@ -211,6 +226,7 @@ public class MatchCrudService {
         var from = match.getStatus();
         match.cancel("OWNER_DELETE", now());
         events.statusChanged(match, from, "방장 요청으로 모임 삭제");
+        if(deposits.isEnabled()) deposits.cancelMatch(match);
         matches.flush();
     }
 
@@ -228,8 +244,33 @@ public class MatchCrudService {
         var from = match.getStatus();
         match.cancel("OWNER_CANCEL", changedAt);
         events.statusChanged(match, from, "방장 요청으로 모임 취소");
+        if(deposits.isEnabled()) deposits.cancelMatch(match);
         matches.flush();
         return new MatchDtos.Cancelled(match.getId(), match.getStatus());
+    }
+
+    /** Owner-only edit between start and end, decided by time even if the scheduler is late. */
+    @Transactional
+    public void attendance(
+            Long matchId, Long participantId, Long userId, MatchDtos.AttendanceUpdate request) {
+        validId(matchId);
+        validId(participantId);
+        validId(userId);
+        var match = locked(matchId);
+        owner(matchId, userId, "FORBIDDEN");
+        var now = now();
+        if (!Set.of(MatchStatus.RECRUITING, MatchStatus.CLOSED, MatchStatus.IN_PROGRESS).contains(match.getStatus())
+                || match.getStartAt().isAfter(now)
+                || !now.isBefore(match.getEndAt()))
+            throw problem(409, "ATTENDANCE_UPDATE_NOT_ALLOWED", "모임 진행 중에만 출석을 수정할 수 있습니다.");
+        var row =
+                participants
+                        .findById(participantId)
+                        .filter(p -> p.getMatch().getId().equals(matchId)
+                                && p.getParticipationStatus() == ParticipationStatus.CONFIRMED)
+                        .orElseThrow(() -> problem(404, "MATCH_PARTICIPANT_NOT_FOUND", "참가자를 찾을 수 없습니다."));
+        row.markAttendance(request.matchParticipantStatus().name());
+        participants.flush();
     }
 
     public List<MatchDtos.Mine> mine(Long userId) {
@@ -261,6 +302,12 @@ public class MatchCrudService {
         var rows = participants.findAllByMatch_IdOrderByIdAsc(m.getId());
         var profiles =
                 checks.profiles(rows.stream().map(MatchParticipantEntity::getUserId).toList());
+        // Attendance is visible to the match owner only; participantId stays public.
+        boolean ownerView =
+                viewer != null
+                        && rows.stream()
+                                .anyMatch(p -> p.getUserId().equals(viewer)
+                                        && p.getRole() == MatchParticipantRole.OWNER);
         var people =
                 rows.stream()
                         .map(
@@ -270,7 +317,9 @@ public class MatchCrudService {
                                             p == null ? null : p.profileId(),
                                             p == null ? "알 수 없음" : p.nickname(),
                                             p == null ? null : p.imageUrl(),
-                                            row.getRole());
+                                            row.getRole(),
+                                            row.getId(),
+                                            ownerView ? row.getMatchParticipantStatus() : null);
                                 })
                         .toList();
         return new MatchDtos.Detail(
@@ -316,12 +365,12 @@ public class MatchCrudService {
     private void owner(Long matchId, Long userId, String code) {
         if (participants
                 .findByMatch_IdAndUserId(matchId, userId)
-                .filter(p -> p.getRole() == MatchParticipantRole.OWNER)
+                .filter(p -> p.getRole() == MatchParticipantRole.OWNER && p.getParticipationStatus()==ParticipationStatus.CONFIRMED)
                 .isEmpty()) throw problem(403, code, "방장만 처리할 수 있습니다.");
     }
 
     private static void requireEditable(MatchEntity match) {
-        if (match.getStatus() == MatchStatus.CANCELLED)
+        if (Set.of(MatchStatus.CANCELLED,MatchStatus.CREATION_PENDING,MatchStatus.CREATION_FAILED).contains(match.getStatus()))
             throw problem(400, "MATCH_MODIFY_NOT_ALLOWED", "취소된 매치는 수정할 수 없습니다.");
         if (match.getStatus() == MatchStatus.IN_PROGRESS
                 || match.getStatus() == MatchStatus.COMPLETED

@@ -54,6 +54,23 @@ public class ParticipationEvents {
         emit("match.status-changed.v1", match.getId(), fields);
     }
 
+    private static final java.util.concurrent.atomic.AtomicLong LAST_ID_TIME = new java.util.concurrent.atomic.AtomicLong();
+
+    /**
+     * Time-ordered UUID (version 7 layout: 48-bit millis, 12-bit sequence, random tail).
+     * Events saved in one transaction can share created_at, and the relay then orders by
+     * event_id, so a random UUID could publish "COMPLETED" before "IN_PROGRESS".
+     * Strictly increasing within this JVM; ids of one match from other replicas are separated
+     * by the match row lock and later commit time.
+     */
+    static String orderedEventId() {
+        long t = LAST_ID_TIME.updateAndGet(prev -> Math.max(prev + 1, System.currentTimeMillis() << 12));
+        long msb = ((t >>> 12) << 16) | 0x7000L | (t & 0xFFFL);
+        long lsb = (java.util.concurrent.ThreadLocalRandom.current().nextLong() & 0x3FFFFFFFFFFFFFFFL)
+                | 0x8000000000000000L;
+        return new UUID(msb, lsb).toString();
+    }
+
     private static Map<String, Object> base(MatchEntity match) {
         var fields = new LinkedHashMap<String, Object>();
         fields.put("matchId", match.getId());
@@ -70,7 +87,7 @@ public class ParticipationEvents {
     }
 
     private void emit(String topic, Long matchId, Map<String, Object> fields) {
-        String eventId = UUID.randomUUID().toString();
+        String eventId = orderedEventId();
         fields.put("eventId", eventId);
         try {
             jdbc.update(

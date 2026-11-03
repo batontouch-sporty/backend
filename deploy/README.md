@@ -41,7 +41,7 @@ docker compose --env-file .env -f deploy/infra/compose.yml up -d --wait
 - 루트와 다른 점: DB·Redis·Kafka·Prometheus를 `127.0.0.1` 대신 `INFRA_PRIVATE_IP`에 연다. Kafka는 `EXTERNAL`을 `INFRA_PRIVATE_IP:9092`로 광고한다. Alertmanager는 호스트에 열지 않는다. Grafana는 시연용으로 모든 인터페이스에 연다. 앱·Zipkin·Config·Discovery는 띄우지 않는다(K8s에서 돈다).
 - Prometheus는 `deploy/infra/prometheus.yml`을 쓴다. `sporty-services` job만 Compose 서비스 이름 대신 `targets/*.json`(file_sd)을 읽고, job 이름·`application` 라벨·경보 규칙은 루트와 같다. json을 고치면 재시작 없이 다시 읽는다.
 - K8s 쪽 입력(`k8s/README.md`의 `sporty-infra-endpoints`): `MARIADB_HOST`·`REDIS_HOST`=`INFRA_PRIVATE_IP`, `KAFKA_BOOTSTRAP_SERVERS`=`INFRA_PRIVATE_IP:9092`, `PROMETHEUS_URL`=`http://INFRA_PRIVATE_IP:9090`.
-- 수집 NodePort: gateway 관리 30101, user 30181, match 30182, facility 30183, ai 30184, notification 30185.
+- 수집 NodePort: gateway 관리 30101, user 30181, match 30182, facility 30183, ai 30184, notification 30185. 이 Service는 `k8s/monitoring-nodeport.yaml`(PR #137, `kubectl apply -k k8s`에 포함)이 만든다. 확인: `kubectl get svc -n sporty -l app.kubernetes.io/component=metrics`.
 
 ### 보안 그룹 (infra EC2 인바운드)
 

@@ -13,12 +13,18 @@ import com.example.sporty.ai.tools.MatchRecommendAiTool;
 public class RecommendChat {
 
     private final ChatClient chatClient;
+    private final MockLlm mockLlm;
 
-    public RecommendChat(ChatClient.Builder builder, MatchRecommendAiTool tool) {
+    public RecommendChat(ChatClient.Builder builder, MatchRecommendAiTool tool, MockLlm mockLlm) {
         this.chatClient = builder.defaultTools(tool).build();
+        this.mockLlm = mockLlm;
     }
 
     public String call(String systemPrompt, String userPrompt) {
+        // 시연 대비 목업 모드면 OpenAI를 부르지 않는다(AI_MOCK_ENABLED=true).
+        if (mockLlm.enabled()) {
+            return mockLlm.recommend(userPrompt);
+        }
         return chatClient.prompt()
                 .system(systemPrompt)
                 .user(userPrompt)

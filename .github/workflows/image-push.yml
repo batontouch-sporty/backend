@@ -20,7 +20,7 @@ permissions:
   contents: read
 
 # 커밋마다 따로 실행해 대기 중인 실행이 취소되지 않게 한다(커밋별 <sha7> 이미지 보존).
-# latest는 push job에서 main 최신 커밋일 때만 올려 순서가 뒤집히지 않게 한다.
+# latest는 맨 아래 latest job에서 따로 한 줄로 세워 갱신한다.
 concurrency:
   group: image-push-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: false
@@ -46,6 +46,7 @@ jobs:
             echo "enabled=false" >> "$GITHUB_OUTPUT"
           fi
 
+  # 캐시 scope를 커밋별로 나눠 동시에 도는 다른 커밋 실행이 캐시를 덮어쓰지 않게 한다.
   build-stage:
     name: 공통 build 스테이지 캐시
     needs: check
@@ -66,8 +67,8 @@ jobs:
           target: build
           platforms: linux/amd64
           push: false
-          cache-from: type=gha,scope=sporty-build
-          cache-to: type=gha,scope=sporty-build,mode=max
+          cache-from: type=gha,scope=sporty-build-${{ github.sha }}
+          cache-to: type=gha,scope=sporty-build-${{ github.sha }},mode=max
 
   push:
     name: ${{ matrix.service }}-service 이미지
@@ -94,17 +95,7 @@ jobs:
         id: tag
         run: echo "sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
-      - name: main 최신 커밋인지 확인
-        id: head
-        run: |
-          if [ "$GITHUB_REF" = refs/heads/main ] && [ "$(git ls-remote origin refs/heads/main | cut -f1)" = "$GITHUB_SHA" ]; then
-            echo "latest=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "latest=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      # 빌드 context는 저장소 루트다(Dockerfile 주석 참고).
-      # latest는 main 최신 커밋일 때만 올린다. 다른 브랜치나 이미 지난 커밋은 <sha7>만 올린다.
+      # 빌드 context는 저장소 루트다(Dockerfile 주석 참고). 여기서는 <sha7>만 올린다.
       - name: 이미지 빌드 · push
         uses: docker/build-push-action@v6
         with:
@@ -112,7 +103,44 @@ jobs:
           file: ${{ matrix.service }}-service/Dockerfile
           platforms: linux/amd64
           push: true
-          tags: |
-            ${{ vars.DOCKERHUB_NAMESPACE }}/sporty-${{ matrix.service }}-service:${{ steps.tag.outputs.sha }}
-            ${{ steps.head.outputs.latest == 'true' && format('{0}/sporty-{1}-service:latest', vars.DOCKERHUB_NAMESPACE, matrix.service) || '' }}
-          cache-from: type=gha,scope=sporty-build
+          tags: ${{ vars.DOCKERHUB_NAMESPACE }}/sporty-${{ matrix.service }}-service:${{ steps.tag.outputs.sha }}
+          cache-from: type=gha,scope=sporty-build-${{ github.sha }}
+
+  # latest는 main에서만, 커밋 실행들을 한 줄로 세워 갱신한다. 새 커밋의 latest job이 들어오면 이전 것은 취소된다.
+  # 다시 빌드하지 않고 이미 올린 <sha7> 이미지에 latest 태그만 붙이며, 붙이기 직전에 이 커밋이 main 최신인지 확인한다.
+  latest:
+    name: latest 태그 갱신
+    needs: push
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: image-latest-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - name: Buildx 준비
+        uses: docker/setup-buildx-action@v3
+
+      - name: Docker Hub 로그인
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: main 최신 커밋일 때만 latest 태그
+        env:
+          NAMESPACE: ${{ vars.DOCKERHUB_NAMESPACE }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          set -euo pipefail
+          sha="${GITHUB_SHA::7}"
+          for svc in discovery config gateway user match facility ai notification; do
+            # 서비스마다 붙이기 직전에 다시 확인한다. 조회 실패는 건너뛰지 않고 job을 실패시킨다.
+            head="$(git ls-remote "$REPO_URL" refs/heads/main | cut -f1)"
+            [ -n "$head" ] || { echo "::error::main HEAD 조회 실패"; exit 1; }
+            if [ "$head" != "$GITHUB_SHA" ]; then
+              echo "::notice::main이 ${head::7}로 앞서 있어 latest를 갱신하지 않습니다."
+              exit 0
+            fi
+            docker buildx imagetools create -t "$NAMESPACE/sporty-$svc-service:latest" "$NAMESPACE/sporty-$svc-service:$sha"
+          done

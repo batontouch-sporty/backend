@@ -44,7 +44,7 @@ DB 스키마는 MariaDB 볼륨이 비어 있을 때만 `docker/mariadb/`의 스�
 
 config-repo 값을 바꾼 뒤 config-service에 `POST /actuator/busrefresh`를 한 번 보내면 RabbitMQ를 거쳐 서비스 6개(gateway·user·match·facility·ai·notification)가 재시작 없이 설정을 다시 읽습니다. `busrefresh`는 config-service에만 열려 있고 Gateway 라우트가 없어 외부에서 부를 수 없습니다.
 
-- RabbitMQ 계정은 `.env`의 `RABBITMQ_USER`·`RABBITMQ_PASSWORD`입니다(비어 있으면 Compose가 기동하지 않습니다). 관리 화면은 [http://localhost:15672](http://localhost:15672)입니다.
+- RabbitMQ 계정은 `.env`의 `RABBITMQ_USER`·`RABBITMQ_PASSWORD`입니다(비우면 로컬 전용 기본값 guest를 씁니다. 운영에서는 반드시 지정합니다). 관리 화면은 [http://localhost:15672](http://localhost:15672)입니다.
 - 로그 레벨(`logging.level.*`)과 `@ConfigurationProperties` 값은 바로 바뀝니다. DB 연결·포트처럼 기동 때만 읽는 값은 재시작해야 바뀝니다.
 
 로그 레벨로 확인하는 순서입니다(코드 변경 없음).

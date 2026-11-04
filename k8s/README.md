@@ -55,12 +55,14 @@ Eureka의 등록 정보는 메모리에 보관되므로 새 서버가 시작된 
 
 | 서비스 | replicas | 이유 |
 |---|---|---|
-| frontend, gateway-service, config-service, ai-service | 2 | 상태와 `@Scheduled` 작업이 없다. `topologySpreadConstraints`(`kubernetes.io/hostname`, maxSkew 1, `DoNotSchedule`, `nodeTaintsPolicy: Honor`)로 worker마다 1개씩 두어 노드 1대 장애에도 화면·API 진입·설정·AI가 응답한다 |
+| frontend, gateway-service, config-service, ai-service | 2 | 상태와 `@Scheduled` 작업이 없다. `topologySpreadConstraints`(`kubernetes.io/hostname`, maxSkew 1, `DoNotSchedule`, `nodeTaintsPolicy: Honor`, `matchLabelKeys: [pod-template-hash]`)로 worker마다 1개씩 둔다. 롤아웃 중에는 새 ReplicaSet Pod끼리만 나눠 계산한다 |
 | user-service, match-service, facility-service | 1 | 상태 전이, Outbox 발행, 탈퇴 시간 초과 검사, 시설 동기화 같은 `@Scheduled` 작업이 Pod마다 돈다. 분산 잠금 없이 늘리면 중복 실행되므로 잠금을 넣은 뒤 확장한다 |
 | discovery-service | 1 | standalone Eureka라 여러 개로 늘리려면 서버 간 복제 설정이 필요하다 |
 | notification-service, zipkin | 1 | 이번 범위에서 제외 |
 
 worker 1대가 내려가면 그 노드에 `NoSchedule` taint가 붙고 `nodeTaintsPolicy: Honor`라 계산에서 빠지므로, 다시 만들어지는 Pod는 남은 worker에 뜬다(master도 taint 때문에 계산에서 빠진다). 노드가 돌아와도 자동으로 다시 나뉘지 않으므로 `kubectl -n <네임스페이스> rollout restart deployment/<이름>`으로 다시 나눈다.
+
+외부 접속은 worker 공인 IP의 NodePort(30000)로 들어온다. NodePort는 모든 노드에 열려 있어 어느 worker 주소로 들어와도 살아 있는 Pod로 전달되지만, 접속한 그 worker가 내려가면 그 주소로는 접속할 수 없다. 이때는 살아 있는 worker의 공인 IP로 접속한다. 같은 주소를 유지하려면 상태 검사를 하는 외부 Load Balancer나 DNS 장애 조치가 필요하며, 현재 구성에는 없다.
 
 Java 17 환경에서 다음 의존성 확인 명령을 실행한 결과, `spring-boot-starter-actuator:3.5.4`가 `spring-cloud-netflix-eureka-server:4.3.0`을 통해 Discovery의 `runtimeClasspath`에 전이 포함됨을 확인했다.
 

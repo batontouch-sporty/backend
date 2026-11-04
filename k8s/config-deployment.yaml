@@ -25,6 +25,9 @@ spec:
           topologyKey: kubernetes.io/hostname
           whenUnsatisfiable: DoNotSchedule
           nodeTaintsPolicy: Honor
+          # 롤아웃 중 이전 ReplicaSet Pod는 빼고 새 ReplicaSet끼리 나눈다.
+          matchLabelKeys:
+            - pod-template-hash
           labelSelector:
             matchLabels:
               app.kubernetes.io/name: config-service

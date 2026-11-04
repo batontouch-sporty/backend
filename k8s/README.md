@@ -62,6 +62,8 @@ Eureka의 등록 정보는 메모리에 보관되므로 새 서버가 시작된 
 
 notification-service는 Kafka 컨슈머 그룹(`notification-service`)으로 이벤트를 받고 eventId로 중복을 거르므로 2개여도 같은 알림을 두 번 저장하지 않는다. 운영 토픽은 파티션이 1개라 토픽마다 소비는 한 Pod가 맡고, 다른 Pod는 알림함 API 응답과 장애 시 소비 인계(리밸런스)를 맡는다.
 
+Gateway는 업무 서비스(ai·notification 등)로 Eureka 기반 `lb://` 라우트를 쓰고 재시도 필터는 없다. 롤아웃·축소처럼 Pod가 정상 종료되면 Eureka에서 바로 빠지지만, worker가 갑자기 내려가면 Eureka 기본 lease 만료(90초)와 클라이언트 캐시 갱신(약 30초) 사이에 Gateway가 이미 없는 인스턴스를 고를 수 있어, 그동안 해당 서비스 요청 일부가 연결 실패·5xx로 끝날 수 있다(최대 약 2~3분, 이후 남은 Pod로만 전달). 줄이려면 Gateway 라우트에 GET 재시도 필터를 두거나 Eureka lease·캐시 주기를 줄인다. 이번 범위에서는 바꾸지 않는다.
+
 worker 1대가 내려가면 그 노드에 `NoSchedule` taint가 붙고 `nodeTaintsPolicy: Honor`라 계산에서 빠지므로, 다시 만들어지는 Pod는 남은 worker에 뜬다(master도 taint 때문에 계산에서 빠진다). 노드가 돌아와도 자동으로 다시 나뉘지 않으므로 `kubectl -n <네임스페이스> rollout restart deployment/<이름>`으로 다시 나눈다.
 
 외부 접속은 worker 공인 IP의 NodePort(30000)로 들어온다. NodePort는 모든 노드에 열려 있어 어느 worker 주소로 들어와도 살아 있는 Pod로 전달되지만, 접속한 그 worker가 내려가면 그 주소로는 접속할 수 없다. 이때는 살아 있는 worker의 공인 IP로 접속한다. 같은 주소를 유지하려면 상태 검사를 하는 외부 Load Balancer나 DNS 장애 조치가 필요하며, 현재 구성에는 없다.

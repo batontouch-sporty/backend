@@ -8,7 +8,7 @@ metadata:
     app.kubernetes.io/component: gateway
     app.kubernetes.io/part-of: sporty
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app.kubernetes.io/name: gateway-service
@@ -19,6 +19,18 @@ spec:
         app.kubernetes.io/component: gateway
         app.kubernetes.io/part-of: sporty
     spec:
+      # 노드 1대 장애에도 응답하도록 worker마다 1개씩 둔다(taint가 있는 master는 계산에서 뺀다).
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          nodeTaintsPolicy: Honor
+          # 롤아웃 중 이전 ReplicaSet Pod는 빼고 새 ReplicaSet끼리 나눈다.
+          matchLabelKeys:
+            - pod-template-hash
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: gateway-service
       containers:
         - name: gateway-service
           image: sporty-gateway-service:k8s-draft

@@ -116,6 +116,8 @@ metadata:
     app.kubernetes.io/part-of: sporty
 spec:
   type: NodePort
+  # Pod가 2개라 노드마다 자기 노드의 Pod만 응답하게 한다. Prometheus는 worker별 주소로 따로 긁는다.
+  externalTrafficPolicy: Local
   selector:
     app.kubernetes.io/name: notification-service
   ports:

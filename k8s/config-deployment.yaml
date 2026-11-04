@@ -8,7 +8,7 @@ metadata:
     app.kubernetes.io/component: config
     app.kubernetes.io/part-of: sporty
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app.kubernetes.io/name: config-service
@@ -19,6 +19,15 @@ spec:
         app.kubernetes.io/component: config
         app.kubernetes.io/part-of: sporty
     spec:
+      # 노드 1대 장애에도 응답하도록 worker마다 1개씩 둔다(taint가 있는 master는 계산에서 뺀다).
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          nodeTaintsPolicy: Honor
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: config-service
       containers:
         - name: config-service
           image: sporty-config-service:k8s-draft

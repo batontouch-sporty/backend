@@ -62,7 +62,7 @@ Eureka의 등록 정보는 메모리에 보관되므로 새 서버가 시작된 
 
 notification-service는 Kafka 컨슈머 그룹(`notification-service`)으로 이벤트를 받고 eventId로 중복을 거르므로 2개여도 같은 알림을 두 번 저장하지 않는다. 운영 토픽은 파티션이 1개라 토픽마다 소비는 한 Pod가 맡고, 다른 Pod는 알림함 API 응답과 장애 시 소비 인계(리밸런스)를 맡는다.
 
-Gateway는 업무 서비스(ai·notification 등)로 Eureka 기반 `lb://` 라우트를 쓰고 재시도 필터는 없다. 롤아웃·축소처럼 Pod가 정상 종료되면 Eureka에서 바로 빠지지만, worker가 갑자기 내려가면 Eureka 기본 lease 만료(90초)와 클라이언트 캐시 갱신(약 30초) 사이에 Gateway가 이미 없는 인스턴스를 고를 수 있어, 그동안 해당 서비스 요청 일부가 연결 실패·5xx로 끝날 수 있다(최대 약 2~3분, 이후 남은 Pod로만 전달). 줄이려면 Gateway 라우트에 GET 재시도 필터를 두거나 Eureka lease·캐시 주기를 줄인다. 이번 범위에서는 바꾸지 않는다.
+Gateway는 업무 서비스(ai·notification 등)로 Eureka 기반 `lb://` 라우트를 쓰고 재시도 필터는 없다. 롤아웃·축소처럼 Pod가 정상 종료되면 Eureka에서 바로 빠지지만, worker가 갑자기 내려가면 Eureka가 그 인스턴스를 지울 때까지(기본 lease 만료 90초 + 클라이언트 캐시 갱신 약 30초) Gateway가 이미 없는 인스턴스를 고를 수 있어, 장애 인스턴스 정보가 갱신될 때까지 해당 서비스 요청 일부가 연결 실패·5xx로 끝날 수 있다. Eureka 자기 보호(self-preservation, 기본 켜짐)가 동작하면 장애 인스턴스 삭제가 보류될 수 있어 복구 시간을 단정할 수 없으며, 실제 worker 장애 테스트로 확인해야 한다. 줄이려면 Gateway 라우트에 GET 재시도 필터를 두거나 Eureka lease·캐시 주기를 줄인다. 이번 범위에서는 바꾸지 않는다.
 
 worker 1대가 내려가면 그 노드에 `NoSchedule` taint가 붙고 `nodeTaintsPolicy: Honor`라 계산에서 빠지므로, 다시 만들어지는 Pod는 남은 worker에 뜬다(master도 taint 때문에 계산에서 빠진다). 노드가 돌아와도 자동으로 다시 나뉘지 않으므로 `kubectl -n <네임스페이스> rollout restart deployment/<이름>`으로 다시 나눈다.
 

@@ -234,7 +234,7 @@ EC2 4대: k8s-master(t3.medium), k8s-worker 2대(t3.large, kubeadm), infra(t3.la
 | `ai-metrics` | 8084 | 30184 |
 | `notification-metrics` | 8085 | 30185 |
 
-워커 쪽에서 infra EC2의 3306·6379·9092·5672·9090을 쓸 수 있게 infra 보안 그룹은 워커 사설 IP를 허용한다. infra의 Prometheus 수집 타깃은 `<워커-사설-IP>:<NodePort>`, 경로는 `/actuator/prometheus`다. 로컬 Compose용 `monitoring/prometheus.yml`은 그대로 두고, infra 전용 설정 `deploy/infra/prometheus.yml`이 `deploy/infra/targets/k8s-targets.json`(file_sd)을 읽는다. 예시 파일을 복사해 IP를 채우면 재시작 없이 다시 읽고, Prometheus `/targets`에서 여섯 대상이 UP인지 확인한다.
+워커 쪽에서 infra EC2의 3306·6379·9092·5672·9090을 쓸 수 있게 infra 보안 그룹은 워커 사설 IP를 허용한다. infra의 Prometheus 수집 타깃은 `<워커-사설-IP>:<NodePort>`, 경로는 `/actuator/prometheus`다. 로컬 Compose용 `monitoring/prometheus.yml`은 그대로 두고, infra 전용 설정 `deploy/infra/prometheus.yml`이 `deploy/infra/targets/k8s-targets.json`(file_sd)을 읽는다. 예시 파일을 복사해 IP를 채우면 재시작 없이 다시 읽고, Prometheus `/targets`에서 여덟 대상이 UP인지 확인한다. Pod가 2개인 gateway-service·ai-service의 지표 Service(30101·30184)는 `externalTrafficPolicy: Local`이라 각 worker 주소가 그 노드의 Pod만 가리키므로, 두 worker 주소를 모두 대상으로 넣어 Pod별로 따로 수집한다(`instance` 라벨로 구분). worker 1대가 내려가면 그 대상만 DOWN이 되고 `SportyServiceDown` 경보가 해당 대상에 대해 울린다. Pod가 1개인 서비스는 kube-proxy가 어느 worker 주소로 들어와도 그 Pod로 넘기므로 주소 하나로 수집한다.
 
 ### 순서
 

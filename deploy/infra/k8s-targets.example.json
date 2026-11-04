@@ -4,5 +4,5 @@
   {"targets": ["<worker-사설-IP>:30182"], "labels": {"application": "match-service"}},
   {"targets": ["<worker-사설-IP>:30183"], "labels": {"application": "facility-service"}},
   {"targets": ["<worker1-사설-IP>:30184", "<worker2-사설-IP>:30184"], "labels": {"application": "ai-service"}},
-  {"targets": ["<worker-사설-IP>:30185"], "labels": {"application": "notification-service"}}
+  {"targets": ["<worker1-사설-IP>:30185", "<worker2-사설-IP>:30185"], "labels": {"application": "notification-service"}}
 ]

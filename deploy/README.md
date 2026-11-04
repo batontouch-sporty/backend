@@ -30,7 +30,7 @@ AWS EC2에 올리는 두 가지 구성이다. 기본은 **A. K8s + infra EC2**�
 
 ```bash
 # 1. K8s 앱 수집 대상. <worker-사설-IP>·<worker1-사설-IP>·<worker2-사설-IP>를 워커 사설 IP로 바꾼다.
-#    Pod가 1개인 서비스는 워커 하나만 적어도 NodePort라 수집된다. gateway·ai(30101·30184)는 Pod가 2개라 worker1·worker2 주소를 둘 다 적는다.
+#    Pod가 1개인 서비스는 워커 하나만 적어도 NodePort라 수집된다. gateway·ai·notification(30101·30184·30185)은 Pod가 2개라 worker1·worker2 주소를 둘 다 적는다.
 mkdir -p deploy/infra/targets
 cp deploy/infra/k8s-targets.example.json deploy/infra/targets/k8s-targets.json
 vi deploy/infra/targets/k8s-targets.json

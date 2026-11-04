@@ -55,10 +55,14 @@ Eureka의 등록 정보는 메모리에 보관되므로 새 서버가 시작된 
 
 | 서비스 | replicas | 이유 |
 |---|---|---|
-| frontend, gateway-service, config-service, ai-service | 2 | 상태와 `@Scheduled` 작업이 없다. `topologySpreadConstraints`(`kubernetes.io/hostname`, maxSkew 1, `DoNotSchedule`, `nodeTaintsPolicy: Honor`, `matchLabelKeys: [pod-template-hash]`)로 worker마다 1개씩 둔다. 롤아웃 중에는 새 ReplicaSet Pod끼리만 나눠 계산한다 |
+| frontend, gateway-service, config-service, ai-service, notification-service | 2 | 상태와 `@Scheduled` 작업이 없다. `topologySpreadConstraints`(`kubernetes.io/hostname`, maxSkew 1, `DoNotSchedule`, `nodeTaintsPolicy: Honor`, `matchLabelKeys: [pod-template-hash]`)로 worker마다 1개씩 둔다. 롤아웃 중에는 새 ReplicaSet Pod끼리만 나눠 계산한다 |
 | user-service, match-service, facility-service | 1 | 상태 전이, Outbox 발행, 탈퇴 시간 초과 검사, 시설 동기화 같은 `@Scheduled` 작업이 Pod마다 돈다. 분산 잠금 없이 늘리면 중복 실행되므로 잠금을 넣은 뒤 확장한다 |
 | discovery-service | 1 | standalone Eureka라 여러 개로 늘리려면 서버 간 복제 설정이 필요하다 |
-| notification-service, zipkin | 1 | 이번 범위에서 제외 |
+| zipkin | 1 | 추적 수집 서버라 범위에서 제외 |
+
+notification-service는 Kafka 컨슈머 그룹(`notification-service`)으로 이벤트를 받고 eventId로 중복을 거르므로 2개여도 같은 알림을 두 번 저장하지 않는다. 운영 토픽은 파티션이 1개라 토픽마다 소비는 한 Pod가 맡고, 다른 Pod는 알림함 API 응답과 장애 시 소비 인계(리밸런스)를 맡는다.
+
+Gateway는 업무 서비스(ai·notification 등)로 Eureka 기반 `lb://` 라우트를 쓰고 재시도 필터는 없다. 롤아웃·축소처럼 Pod가 정상 종료되면 Eureka에서 바로 빠지지만, worker가 갑자기 내려가면 Eureka가 그 인스턴스를 지울 때까지(기본 lease 만료 90초 + 클라이언트 캐시 갱신 약 30초) Gateway가 이미 없는 인스턴스를 고를 수 있어, 장애 인스턴스 정보가 갱신될 때까지 해당 서비스 요청 일부가 연결 실패·5xx로 끝날 수 있다. Eureka 자기 보호(self-preservation, 기본 켜짐)가 동작하면 장애 인스턴스 삭제가 보류될 수 있어 복구 시간을 단정할 수 없으며, 실제 worker 장애 테스트로 확인해야 한다. 줄이려면 Gateway 라우트에 GET 재시도 필터를 두거나 Eureka lease·캐시 주기를 줄인다. 이번 범위에서는 바꾸지 않는다.
 
 worker 1대가 내려가면 그 노드에 `NoSchedule` taint가 붙고 `nodeTaintsPolicy: Honor`라 계산에서 빠지므로, 다시 만들어지는 Pod는 남은 worker에 뜬다(master도 taint 때문에 계산에서 빠진다). 노드가 돌아와도 자동으로 다시 나뉘지 않으므로 `kubectl -n <네임스페이스> rollout restart deployment/<이름>`으로 다시 나눈다.
 
@@ -234,7 +238,7 @@ EC2 4대: k8s-master(t3.medium), k8s-worker 2대(t3.large, kubeadm), infra(t3.la
 | `ai-metrics` | 8084 | 30184 |
 | `notification-metrics` | 8085 | 30185 |
 
-워커 쪽에서 infra EC2의 3306·6379·9092·5672·9090을 쓸 수 있게 infra 보안 그룹은 워커 사설 IP를 허용한다. infra의 Prometheus 수집 타깃은 `<워커-사설-IP>:<NodePort>`, 경로는 `/actuator/prometheus`다. 로컬 Compose용 `monitoring/prometheus.yml`은 그대로 두고, infra 전용 설정 `deploy/infra/prometheus.yml`이 `deploy/infra/targets/k8s-targets.json`(file_sd)을 읽는다. 예시 파일을 복사해 IP를 채우면 재시작 없이 다시 읽고, Prometheus `/targets`에서 여덟 대상이 UP인지 확인한다. Pod가 2개인 gateway-service·ai-service의 지표 Service(30101·30184)는 `externalTrafficPolicy: Local`이라 각 worker 주소가 그 노드에 있는 Pod로만 전달된다. 두 worker 주소를 모두 대상으로 넣어 worker 단위로 따로 수집하고(`instance` 라벨로 구분), 분산 규칙상 평소에는 worker마다 Pod가 1개라 대상 하나가 Pod 하나에 해당한다. 롤링 업데이트(maxSurge로 잠시 3개)나 worker 장애 후 재배치로 같은 worker에 Pod 2개가 있는 동안에는 그 worker 대상이 둘 중 하나를 긁어 지표가 같은 `instance`에 섞일 수 있다. 사용자 요청에는 영향이 없고, Pod별로 정확히 나눠야 하면 Pod 단위 수집 대상(Prometheus의 Kubernetes 서비스 디스커버리 등)이 필요하다. worker 1대가 내려가면 그 대상만 DOWN이 되고 `SportyServiceDown` 경보가 해당 대상에 대해 울린다. Pod가 1개인 서비스는 kube-proxy가 어느 worker 주소로 들어와도 그 Pod로 넘기므로 주소 하나로 수집한다.
+워커 쪽에서 infra EC2의 3306·6379·9092·5672·9090을 쓸 수 있게 infra 보안 그룹은 워커 사설 IP를 허용한다. infra의 Prometheus 수집 타깃은 `<워커-사설-IP>:<NodePort>`, 경로는 `/actuator/prometheus`다. 로컬 Compose용 `monitoring/prometheus.yml`은 그대로 두고, infra 전용 설정 `deploy/infra/prometheus.yml`이 `deploy/infra/targets/k8s-targets.json`(file_sd)을 읽는다. 예시 파일을 복사해 IP를 채우면 재시작 없이 다시 읽고, Prometheus `/targets`에서 아홉 대상이 UP인지 확인한다. Pod가 2개인 gateway-service·ai-service·notification-service의 지표 Service(30101·30184·30185)는 `externalTrafficPolicy: Local`이라 각 worker 주소가 그 노드에 있는 Pod로만 전달된다. 두 worker 주소를 모두 대상으로 넣어 worker 단위로 따로 수집하고(`instance` 라벨로 구분), 분산 규칙상 평소에는 worker마다 Pod가 1개라 대상 하나가 Pod 하나에 해당한다. 롤링 업데이트(maxSurge로 잠시 3개)나 worker 장애 후 재배치로 같은 worker에 Pod 2개가 있는 동안에는 그 worker 대상이 둘 중 하나를 긁어 지표가 같은 `instance`에 섞일 수 있다. 사용자 요청에는 영향이 없고, Pod별로 정확히 나눠야 하면 Pod 단위 수집 대상(Prometheus의 Kubernetes 서비스 디스커버리 등)이 필요하다. worker 1대가 내려가면 그 대상만 DOWN이 되고 `SportyServiceDown` 경보가 해당 대상에 대해 울린다. Pod가 1개인 서비스는 kube-proxy가 어느 worker 주소로 들어와도 그 Pod로 넘기므로 주소 하나로 수집한다.
 
 ### 순서
 
